@@ -5,6 +5,8 @@ import {
   type PolicyMode,
   type PolicyPreset,
 } from "./command-policy.js";
+import { detectEggPreset } from "./egg-detector.js";
+import type { ServerDetails } from "../pterodactyl/client.js";
 
 export interface ServerPolicyOverride {
   mode?: PolicyMode;
@@ -29,18 +31,33 @@ export class PolicyResolver {
     private readonly defaultMode: PolicyMode,
     private readonly defaultPreset: PolicyPreset,
     private readonly overrides: PolicyOverrides = {},
+    private readonly autoDetectEgg = false,
   ) {
     this.defaultPolicy = createCommandPolicy(defaultMode, defaultPreset);
   }
 
-  forServer(serverId: string): CommandPolicy {
+  forServer(serverId: string, server?: Pick<ServerDetails, "dockerImage" | "invocation">): CommandPolicy {
     const override = this.overrides[serverId];
-    if (!override?.mode && !override?.preset) {
+    let preset = override?.preset ?? this.defaultPreset;
+
+    if (!override?.preset && this.autoDetectEgg && server) {
+      const detected = detectEggPreset(server);
+      if (detected) {
+        preset = detected;
+      }
+    }
+
+    if (!override?.mode && !override?.preset && preset === this.defaultPreset && !this.autoDetectEgg) {
       return this.defaultPolicy;
     }
+
+    if (!override?.mode && preset === this.defaultPreset && this.autoDetectEgg && !server) {
+      return this.defaultPolicy;
+    }
+
     return createCommandPolicy(
-      override.mode ?? this.defaultMode,
-      override.preset ?? this.defaultPreset,
+      override?.mode ?? this.defaultMode,
+      preset,
     );
   }
 }

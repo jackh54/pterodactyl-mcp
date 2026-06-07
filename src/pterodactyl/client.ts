@@ -74,6 +74,16 @@ export interface ActivityEntry {
   properties: Record<string, unknown>;
 }
 
+export interface BackupSummary {
+  uuid: string;
+  name: string;
+  isSuccessful: boolean | null;
+  isLocked: boolean;
+  bytes: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 interface PterodactylListResponse<T> {
   object: string;
   data: Array<{ object: string; attributes: T }>;
@@ -325,6 +335,90 @@ export class PterodactylClient {
     return this.requestText(
       `/api/client/servers/${serverId}/files/contents?${params.toString()}`,
     );
+  }
+
+  async writeFile(serverId: string, filePath: string, content: string): Promise<void> {
+    const params = new URLSearchParams({ file: filePath });
+    const response = await fetch(
+      `${this.panelUrl}/api/client/servers/${serverId}/files/write?${params.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: "Application/vnd.pterodactyl.v1+json",
+          "Content-Type": "text/plain",
+        },
+        body: content,
+      },
+    );
+
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const errorBody = (await response.json()) as {
+          errors?: Array<{ detail?: string }>;
+        };
+        detail = errorBody.errors?.[0]?.detail ?? detail;
+      } catch {
+        // ignore
+      }
+      throw new PterodactylApiError(detail, response.status);
+    }
+  }
+
+  async listBackups(serverId: string): Promise<BackupSummary[]> {
+    const data = await this.request<
+      PterodactylListResponse<{
+        uuid: string;
+        name: string;
+        is_successful: boolean | null;
+        is_locked: boolean;
+        bytes: number;
+        created_at: string;
+        completed_at: string | null;
+      }>
+    >("GET", `/api/client/servers/${serverId}/backups`);
+
+    return data.data.map((item) => ({
+      uuid: item.attributes.uuid,
+      name: item.attributes.name,
+      isSuccessful: item.attributes.is_successful,
+      isLocked: item.attributes.is_locked,
+      bytes: item.attributes.bytes,
+      createdAt: item.attributes.created_at,
+      completedAt: item.attributes.completed_at,
+    }));
+  }
+
+  async createBackup(
+    serverId: string,
+    options: { name?: string; ignored?: string; isLocked?: boolean } = {},
+  ): Promise<BackupSummary> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        uuid: string;
+        name: string;
+        is_successful: boolean | null;
+        is_locked: boolean;
+        bytes: number;
+        created_at: string;
+        completed_at: string | null;
+      }>
+    >("POST", `/api/client/servers/${serverId}/backups`, {
+      name: options.name,
+      ignored: options.ignored,
+      is_locked: options.isLocked ?? false,
+    });
+
+    return {
+      uuid: data.attributes.uuid,
+      name: data.attributes.name,
+      isSuccessful: data.attributes.is_successful,
+      isLocked: data.attributes.is_locked,
+      bytes: data.attributes.bytes,
+      createdAt: data.attributes.created_at,
+      completedAt: data.attributes.completed_at,
+    };
   }
 
   async getServerActivity(

@@ -2,6 +2,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { loadPolicyOverrides, PolicyResolver } from "../policy/policy-resolver.js";
 import { ConsoleSessionManager } from "../pterodactyl/console-session.js";
 import { ConfirmationStore } from "../power/confirmation-store.js";
+import {
+  ActionConfirmationStore,
+  BackupRateLimiter,
+} from "../confirmation/action-store.js";
+import { MetricsRegistry } from "../metrics/registry.js";
 import type { Config } from "../config.js";
 import type { AuthContext } from "../auth/middleware.js";
 import type { AuditLogger } from "../audit/logger.js";
@@ -18,6 +23,9 @@ export interface CreateMcpServerOptions {
   clientIp?: string;
   consoleSessions: ConsoleSessionManager;
   confirmationStore: ConfirmationStore;
+  actionConfirmationStore: ActionConfirmationStore;
+  backupRateLimiter: BackupRateLimiter;
+  metrics: MetricsRegistry;
 }
 
 export function createMcpServer(options: CreateMcpServerOptions): McpServer {
@@ -25,6 +33,7 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
     options.config.commandPolicyMode,
     options.config.commandPolicyPreset,
     loadPolicyOverrides(options.config.policyOverridesPath),
+    options.config.policyAutoDetectEgg,
   );
 
   const ctx = {
@@ -35,12 +44,15 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
     clientIp: options.clientIp,
     consoleSessions: options.consoleSessions,
     confirmationStore: options.confirmationStore,
+    actionConfirmationStore: options.actionConfirmationStore,
+    backupRateLimiter: options.backupRateLimiter,
+    metrics: options.metrics,
     policyResolver,
   };
 
   const server = new McpServer({
     name: "pterodactyl-mcp",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   registerTools(server, ctx);

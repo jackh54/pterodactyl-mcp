@@ -1,17 +1,18 @@
-import type { Request, Response, NextFunction } from "express";
 import { PterodactylClient, PterodactylApiError } from "../pterodactyl/client.js";
 import type { Config } from "../config.js";
 import type { AccountInfo } from "../pterodactyl/client.js";
+import { loadTokenMap, resolveApiToken } from "./token-map.js";
 
 export interface AuthContext {
   client: PterodactylClient;
   account: AccountInfo;
   tokenFingerprint: string;
+  authMethod: "pterodactyl_key" | "mapped_token";
 }
 
 const BEARER_PREFIX = "Bearer ";
 
-export function extractBearerToken(req: Request): string | null {
+export function extractBearerToken(req: { headers: { authorization?: string } }): string | null {
   const header = req.headers.authorization;
   if (!header?.startsWith(BEARER_PREFIX)) {
     return null;
@@ -28,16 +29,23 @@ export async function authenticateRequest(
   config: Config,
   token: string,
 ): Promise<AuthContext> {
-  const client = new PterodactylClient(config.panelUrl, token);
+  const tokenMap = loadTokenMap(config.mcpTokenMapPath);
+  const apiKey = resolveApiToken(token, tokenMap);
+  const client = new PterodactylClient(config.panelUrl, apiKey);
   const account = await client.validateAccount();
+
   return {
     client,
     account,
     tokenFingerprint: tokenFingerprint(token),
+    authMethod: token.startsWith("ptlc_") ? "pterodactyl_key" : "mapped_token",
   };
 }
 
-export function sendUnauthorized(res: Response, message = "Authentication required"): void {
+export function sendUnauthorized(
+  res: { req?: { protocol?: string; headers: { host?: string; "x-forwarded-proto"?: string } }; setHeader: (k: string, v: string) => void; status: (c: number) => { json: (b: unknown) => void } },
+  message = "Authentication required",
+): void {
   const resourceMetadataUrl = `${getPublicBaseUrl(res.req)}/.well-known/oauth-protected-resource`;
   res.setHeader(
     "WWW-Authenticate",
@@ -49,41 +57,16 @@ export function sendUnauthorized(res: Response, message = "Authentication requir
   });
 }
 
-function getPublicBaseUrl(req: Request | undefined): string {
+function getPublicBaseUrl(req?: {
+  protocol?: string;
+  headers: { host?: string; "x-forwarded-proto"?: string };
+}): string {
   if (!req) {
     return "http://localhost:3000";
   }
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? req.protocol;
+  const proto = req.headers["x-forwarded-proto"] ?? req.protocol ?? "http";
   const host = req.headers.host ?? "localhost:3000";
   return `${proto}://${host}`;
 }
 
-export function createAuthMiddleware(config: Config) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const token = extractBearerToken(req);
-    if (!token) {
-      sendUnauthorized(res);
-      return;
-    }
-
-    try {
-      const auth = await authenticateRequest(config, token);
-      (req as Request & { auth: AuthContext }).auth = auth;
-      next();
-    } catch (error) {
-      if (error instanceof PterodactylApiError && error.status === 401) {
-        sendUnauthorized(res, "Invalid or expired Pterodactyl API key");
-        return;
-      }
-      next(error);
-    }
-  };
-}
-
-export function getAuth(req: Request): AuthContext {
-  const auth = (req as Request & { auth?: AuthContext }).auth;
-  if (!auth) {
-    throw new Error("Request is not authenticated");
-  }
-  return auth;
-}
+export { PterodactylApiError };

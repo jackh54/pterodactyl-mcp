@@ -24,20 +24,51 @@ const configSchema = z.object({
     .transform((v) => (v ? v.split(",").map((ip) => ip.trim()).filter(Boolean) : undefined)),
   commandPolicyMode: policyModeSchema.default("standard"),
   commandPolicyPreset: policyPresetSchema.default("generic"),
+  policyAutoDetectEgg: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   policyOverridesPath: z.string().optional(),
   consoleMaxLines: z.coerce.number().int().min(1).max(500).default(100),
   consoleTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(8000),
   consoleSessionIdleMs: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
   consoleMaxSessions: z.coerce.number().int().min(1).max(200).default(32),
   fileMaxReadBytes: z.coerce.number().int().min(1024).max(5_242_880).default(262_144),
+  fileMaxWriteBytes: z.coerce.number().int().min(1024).max(1_048_576).default(65_536),
+  enableFileWrite: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  enableBackups: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  backupRateLimitMs: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
   powerConfirmationTtlMs: z.coerce.number().int().min(30_000).max(900_000).default(300_000),
   powerAutoConfirm: z
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  metricsEnabled: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  mcpAdminSecret: z.string().optional(),
+  mcpTokenMapPath: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
+
+function validateJsonFile(path: string, label: string): void {
+  if (!existsSync(path)) {
+    throw new Error(`${label} not found: ${path}`);
+  }
+  try {
+    JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error(`${label} is not valid JSON: ${path}`);
+  }
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const panelUrl = env.PTERODACTYL_PANEL_URL;
@@ -56,26 +87,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedIps: env.ALLOWED_IPS,
     commandPolicyMode: env.COMMAND_POLICY_MODE,
     commandPolicyPreset: env.COMMAND_POLICY_PRESET,
+    policyAutoDetectEgg: env.POLICY_AUTO_DETECT_EGG,
     policyOverridesPath: env.POLICY_OVERRIDES_PATH,
     consoleMaxLines: env.CONSOLE_MAX_LINES,
     consoleTimeoutMs: env.CONSOLE_TIMEOUT_MS,
     consoleSessionIdleMs: env.CONSOLE_SESSION_IDLE_MS,
     consoleMaxSessions: env.CONSOLE_MAX_SESSIONS,
     fileMaxReadBytes: env.FILE_MAX_READ_BYTES,
+    fileMaxWriteBytes: env.FILE_MAX_WRITE_BYTES,
+    enableFileWrite: env.ENABLE_FILE_WRITE,
+    enableBackups: env.ENABLE_BACKUPS,
+    backupRateLimitMs: env.BACKUP_RATE_LIMIT_MS,
     powerConfirmationTtlMs: env.POWER_CONFIRMATION_TTL_MS,
     powerAutoConfirm: env.POWER_AUTO_CONFIRM,
+    metricsEnabled: env.METRICS_ENABLED,
+    mcpAdminSecret: env.MCP_ADMIN_SECRET,
+    mcpTokenMapPath: env.MCP_TOKEN_MAP_PATH,
   });
 
-  if (config.policyOverridesPath && !existsSync(config.policyOverridesPath)) {
-    throw new Error(`POLICY_OVERRIDES_PATH not found: ${config.policyOverridesPath}`);
-  }
-
   if (config.policyOverridesPath) {
-    try {
-      JSON.parse(readFileSync(config.policyOverridesPath, "utf8"));
-    } catch {
-      throw new Error(`POLICY_OVERRIDES_PATH is not valid JSON: ${config.policyOverridesPath}`);
-    }
+    validateJsonFile(config.policyOverridesPath, "POLICY_OVERRIDES_PATH");
+  }
+  if (config.mcpTokenMapPath) {
+    validateJsonFile(config.mcpTokenMapPath, "MCP_TOKEN_MAP_PATH");
   }
 
   return config;

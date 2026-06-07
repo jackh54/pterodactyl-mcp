@@ -4,6 +4,7 @@ import { PterodactylApiError } from "../pterodactyl/client.js";
 import type { McpContext } from "./context.js";
 import { sessionKey } from "./context.js";
 import { registerFileTools } from "./register-file-tools.js";
+import { registerExtendedTools } from "./register-extended-tools.js";
 import { registerPowerTools } from "./register-power-tools.js";
 import {
   auditDenied,
@@ -148,17 +149,17 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
       checkRateLimit(ctx, "send_console_command");
       const args = { server_id, command, wait_for_output };
 
-      const policy = ctx.policyResolver.forServer(server_id).evaluate(command);
-      if (!policy.allowed) {
-        auditDenied(ctx, "send_console_command", args, policy.reason ?? "Command blocked", server_id);
-        return errorResult(policy.reason ?? "Command blocked by policy");
-      }
-
       try {
         const serverDetails = await requireServerWithConsole(ctx, server_id, "send_console_command");
         if (serverDetails.isSuspended || serverDetails.isInstalling) {
           auditDenied(ctx, "send_console_command", args, "Server is not in a runnable state", server_id);
           return errorResult("Server is suspended or still installing.");
+        }
+
+        const policy = ctx.policyResolver.forServer(server_id, serverDetails).evaluate(command);
+        if (!policy.allowed) {
+          auditDenied(ctx, "send_console_command", args, policy.reason ?? "Command blocked", server_id);
+          return errorResult(policy.reason ?? "Command blocked by policy");
         }
 
         if (wait_for_output) {
@@ -204,4 +205,5 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
 
   registerPowerTools(server, ctx);
   registerFileTools(server, ctx);
+  registerExtendedTools(server, ctx);
 }

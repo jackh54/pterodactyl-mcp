@@ -17,6 +17,7 @@ export function errorResult(message: string) {
 export function checkRateLimit(ctx: McpContext, tool: string): void {
   const result = ctx.rateLimiter.check(ctx.auth.tokenFingerprint);
   if (!result.allowed) {
+    ctx.metrics.recordRateLimitHit();
     ctx.audit.log({
       userId: ctx.auth.account.id,
       userEmail: ctx.auth.account.email,
@@ -69,6 +70,7 @@ export function auditSuccess(
   args: Record<string, unknown>,
   serverId?: string,
 ): void {
+  ctx.metrics.recordToolCall(tool, "success");
   ctx.audit.log({
     userId: ctx.auth.account.id,
     userEmail: ctx.auth.account.email,
@@ -87,6 +89,7 @@ export function auditError(
   message: string,
   serverId?: string,
 ): void {
+  ctx.metrics.recordToolCall(tool, "error");
   ctx.audit.log({
     userId: ctx.auth.account.id,
     userEmail: ctx.auth.account.email,
@@ -106,6 +109,7 @@ export function auditDenied(
   message: string,
   serverId?: string,
 ): void {
+  ctx.metrics.recordToolCall(tool, "denied");
   ctx.audit.log({
     userId: ctx.auth.account.id,
     userEmail: ctx.auth.account.email,

@@ -13,10 +13,36 @@ const SENSITIVE_FILE_NAMES = new Set([
   "authorized_keys",
 ]);
 
+const WRITE_BLOCKED_EXTENSIONS = new Set([
+  ".jar",
+  ".so",
+  ".dll",
+  ".exe",
+  ".bin",
+  ".sh",
+]);
+
 export interface PathValidationResult {
   valid: boolean;
   normalized?: string;
   reason?: string;
+}
+
+export function normalizeWritablePath(path: string): PathValidationResult {
+  const base = normalizeServerPath(path);
+  if (!base.valid || !base.normalized) {
+    return base;
+  }
+
+  const ext = base.normalized.includes(".")
+    ? base.normalized.slice(base.normalized.lastIndexOf(".")).toLowerCase()
+    : "";
+
+  if (WRITE_BLOCKED_EXTENSIONS.has(ext)) {
+    return { valid: false, reason: `Writing ${ext} files is blocked by policy` };
+  }
+
+  return base;
 }
 
 export function normalizeServerPath(path: string): PathValidationResult {

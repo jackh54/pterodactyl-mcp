@@ -12,7 +12,13 @@ import {
   extractBearerToken,
   sendUnauthorized,
 } from "./auth/middleware.js";
+import { mountOAuthRoutes, getRegisteredClientCount } from "./auth/oauth-routes.js";
 import { ConfirmationStore } from "./power/confirmation-store.js";
+import {
+  ActionConfirmationStore,
+  BackupRateLimiter,
+} from "./confirmation/action-store.js";
+import { MetricsRegistry } from "./metrics/registry.js";
 import { createMcpServer } from "./mcp/create-server.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -21,7 +27,7 @@ interface SessionEntry {
   server: McpServer;
 }
 
-export function createApp(config: Config): express.Application {
+export function createApp(config: Config, metricsRegistry = new MetricsRegistry()): express.Application {
   const app = express();
   app.set("trust proxy", true);
 
@@ -32,34 +38,58 @@ export function createApp(config: Config): express.Application {
     config.consoleMaxSessions,
   );
   const confirmationStore = new ConfirmationStore(config.powerConfirmationTtlMs);
+  const actionConfirmationStore = new ActionConfirmationStore(config.powerConfirmationTtlMs);
+  const backupRateLimiter = new BackupRateLimiter(config.backupRateLimitMs);
   const sessions = new Map<string, SessionEntry>();
   const ipAllowlist = createIpAllowlistMiddleware(config.allowedIps);
 
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "2mb" }));
+
+  mountOAuthRoutes(app, config);
 
   app.get("/health", (_req, res) => {
     res.json({
       status: "ok",
       mcpEnabled: config.mcpEnabled,
-      version: "0.3.0",
+      version: "0.4.0",
       commandPolicyMode: config.commandPolicyMode,
       commandPolicyPreset: config.commandPolicyPreset,
+      policyAutoDetectEgg: config.policyAutoDetectEgg,
       powerAutoConfirm: config.powerAutoConfirm,
+      enableFileWrite: config.enableFileWrite,
+      enableBackups: config.enableBackups,
       ipAllowlistEnabled: Boolean(config.allowedIps?.length),
+      metricsEnabled: config.metricsEnabled,
+      oauthClientsRegistered: getRegisteredClientCount(),
     });
   });
+
+  if (config.metricsEnabled) {
+    app.get("/metrics", (_req, res) => {
+      metricsRegistry.setActiveSessions(sessions.size);
+      metricsRegistry.setGauge(
+        "pterodactyl_mcp_info",
+        1,
+        { version: "0.4.0" },
+      );
+      res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+      res.send(metricsRegistry.toPrometheus());
+    });
+  }
 
   app.get("/.well-known/oauth-protected-resource", (req, res) => {
     const baseUrl = `${req.protocol}://${req.headers.host ?? "localhost"}`;
     res.json({
       resource: `${baseUrl}/mcp`,
-      authorization_servers: [`${baseUrl}/oauth`],
+      authorization_servers: [`${baseUrl}`],
       scopes_supported: [
         "servers:read",
         "server:console:read",
         "server:console:write",
         "server:power",
         "server:files:read",
+        "server:files:write",
+        "server:backups",
       ],
       bearer_methods_supported: ["header"],
       resource_documentation: "https://github.com/jackh54/pterodactyl-mcp",
@@ -104,6 +134,9 @@ export function createApp(config: Config): express.Application {
           clientIp,
           consoleSessions,
           confirmationStore,
+          actionConfirmationStore,
+          backupRateLimiter,
+          metrics: metricsRegistry,
         });
 
         const transport = new StreamableHTTPServerTransport({
@@ -112,6 +145,7 @@ export function createApp(config: Config): express.Application {
           allowedHosts: config.allowedHosts,
           onsessioninitialized: (id) => {
             sessions.set(id, { transport, server });
+            metricsRegistry.setActiveSessions(sessions.size);
           },
         });
 
@@ -120,6 +154,7 @@ export function createApp(config: Config): express.Application {
         transport.onclose = () => {
           if (transport.sessionId) {
             sessions.delete(transport.sessionId);
+            metricsRegistry.setActiveSessions(sessions.size);
           }
         };
 
@@ -207,10 +242,13 @@ export function startServer(config: Config): void {
     console.log(`Panel URL: ${config.panelUrl}`);
     console.log(`MCP enabled: ${config.mcpEnabled}`);
     console.log(
-      `Command policy: ${config.commandPolicyMode} (preset: ${config.commandPolicyPreset})`,
+      `Command policy: ${config.commandPolicyMode} (preset: ${config.commandPolicyPreset}, auto-detect: ${config.policyAutoDetectEgg})`,
     );
     if (config.allowedIps?.length) {
       console.log(`IP allowlist: ${config.allowedIps.join(", ")}`);
+    }
+    if (config.metricsEnabled) {
+      console.log(`Metrics: http://${config.host}:${config.port}/metrics`);
     }
   });
 }
