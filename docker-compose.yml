@@ -1,0 +1,16 @@
+services:
+  pterodactyl-mcp:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PTERODACTYL_PANEL_URL: ${PTERODACTYL_PANEL_URL}
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      AUDIT_LOG_PATH: /data/audit.jsonl
+    volumes:
+      - mcp-audit:/data
+    restart: unless-stopped
+
+volumes:
+  mcp-audit:
