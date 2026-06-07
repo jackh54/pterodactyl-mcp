@@ -3,10 +3,13 @@ services:
     build: .
     ports:
       - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PTERODACTYL_PANEL_URL: ${PTERODACTYL_PANEL_URL}
       MCP_ENABLED: ${MCP_ENABLED:-true}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      # If your panel runs on the same machine, use http://host.docker.internal:PORT
       # Omit AUDIT_LOG_PATH to log audits to container stdout instead.
       AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-/data/audit.jsonl}
     volumes:

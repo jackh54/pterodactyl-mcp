@@ -99,6 +99,7 @@ export class PterodactylClient {
   constructor(
     private readonly panelUrl: string,
     private readonly apiKey: string,
+    private readonly requestTimeoutMs = 30_000,
   ) {}
 
   private headers(): Record<string, string> {
@@ -109,8 +110,31 @@ export class PterodactylClient {
     };
   }
 
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new PterodactylApiError(
+          `Panel request timed out after ${this.requestTimeoutMs}ms (${url})`,
+          504,
+          "panel_timeout",
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private async requestText(path: string): Promise<string> {
-    const response = await fetch(`${this.panelUrl}${path}`, {
+    const response = await this.fetchWithTimeout(`${this.panelUrl}${path}`, {
       method: "GET",
       headers: this.headers(),
     });
@@ -136,7 +160,7 @@ export class PterodactylClient {
     path: string,
     body?: unknown,
   ): Promise<T> {
-    const response = await fetch(`${this.panelUrl}${path}`, {
+    const response = await this.fetchWithTimeout(`${this.panelUrl}${path}`, {
       method,
       headers: this.headers(),
       body: body !== undefined ? JSON.stringify(body) : undefined,

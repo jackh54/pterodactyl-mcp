@@ -30,7 +30,7 @@ export async function authenticateRequest(
   token: string,
 ): Promise<AuthContext> {
   const apiKey = resolveApiToken(token, config.tokenMap);
-  const client = new PterodactylClient(config.panelUrl, apiKey);
+  const client = new PterodactylClient(config.panelUrl, apiKey, config.panelRequestTimeoutMs);
   const account = await client.validateAccount();
 
   return {

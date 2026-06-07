@@ -56,6 +56,7 @@ const configSchema = z.object({
     .transform((v) => v === "true"),
   mcpAdminSecret: z.string().optional(),
   mcpTokenMapPath: z.string().optional(),
+  panelRequestTimeoutMs: z.coerce.number().int().min(1000).max(120_000).default(30_000),
 });
 
 export type Config = z.infer<typeof configSchema> & {
@@ -106,6 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     metricsEnabled: env.METRICS_ENABLED,
     mcpAdminSecret: env.MCP_ADMIN_SECRET,
     mcpTokenMapPath: env.MCP_TOKEN_MAP_PATH,
+    panelRequestTimeoutMs: env.PANEL_REQUEST_TIMEOUT_MS,
   });
 
   if (config.policyOverridesPath) {
