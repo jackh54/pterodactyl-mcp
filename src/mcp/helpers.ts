@@ -1,7 +1,14 @@
 import type { ServerDetails } from "../pterodactyl/client.js";
+import {
+  fetchConsoleFromFiles,
+  fetchConsoleFromWebSocket,
+  logConsoleDebug,
+  type ConsoleOutputResult,
+} from "../pterodactyl/console-output.js";
 import type { WebSocketCredentials } from "../pterodactyl/console-session.js";
 import { normalizeWingsSocketUrl } from "../pterodactyl/wings-socket.js";
 import type { McpContext } from "./context.js";
+import { sessionKey } from "./context.js";
 
 export function textResult(data: unknown) {
   return {
@@ -91,6 +98,71 @@ export async function prepareConsoleAccess(
       socket: normalizeWingsSocketUrl(credentials.socket, ctx.config.wingsSocketHost),
     },
   };
+}
+
+export async function fetchConsoleOutput(
+  ctx: McpContext,
+  serverId: string,
+  tool: string,
+  maxLines: number,
+): Promise<ConsoleOutputResult> {
+  const transport = ctx.config.consoleTransport;
+  logConsoleDebug(ctx.config.consoleDebug, "fetchConsoleOutput", { serverId, transport, maxLines });
+
+  const server = await requireServerWithConsole(ctx, serverId, tool);
+  if (server.isSuspended || server.isInstalling) {
+    throw new Error("Server is suspended or still installing.");
+  }
+
+  if (transport === "file" || transport === "auto") {
+    if (ctx.auth.client.hasPermission(server, "file.read-content")) {
+      logConsoleDebug(ctx.config.consoleDebug, "trying file-based console read");
+      const fileResult = await fetchConsoleFromFiles(
+        ctx.auth.client,
+        serverId,
+        maxLines,
+        ctx.config.fileMaxReadBytes,
+      );
+      if (fileResult) {
+        logConsoleDebug(ctx.config.consoleDebug, "file-based console read succeeded", {
+          filePath: fileResult.filePath,
+          lineCount: fileResult.lines.length,
+        });
+        return fileResult;
+      }
+      logConsoleDebug(ctx.config.consoleDebug, "no log file found on common paths");
+    } else if (transport === "file") {
+      throw new Error("Missing file.read-content permission for file-based console output.");
+    }
+  }
+
+  if (transport === "file") {
+    throw new Error(
+      "No console log file found. Try CONSOLE_TRANSPORT=websocket or CONSOLE_TRANSPORT=auto.",
+    );
+  }
+
+  logConsoleDebug(ctx.config.consoleDebug, "trying websocket console read");
+  const { credentials } = await prepareConsoleAccess(ctx, serverId, tool);
+  const result = await fetchConsoleFromWebSocket(
+    ctx.consoleSessions,
+    sessionKey(ctx, serverId),
+    serverId,
+    credentials,
+    {
+      maxLines,
+      timeoutMs: ctx.config.consoleWebSocketTimeoutMs,
+      idleMs: ctx.config.consoleIdleMs,
+      connectOptions: {
+        authTimeoutMs: ctx.config.consoleWebSocketAuthTimeoutMs,
+        handshakeTimeoutMs: ctx.config.consoleConnectTimeoutMs,
+      },
+    },
+  );
+  logConsoleDebug(ctx.config.consoleDebug, "websocket console read finished", {
+    lineCount: result.lines.length,
+  });
+  return result;
 }
 
 export function auditSuccess(

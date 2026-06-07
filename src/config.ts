@@ -5,6 +5,8 @@ import { loadTokenMap, type TokenMap } from "./auth/token-map.js";
 const policyModeSchema = z.enum(["strict", "standard", "admin"]);
 const policyPresetSchema = z.enum(["generic", "minecraft", "rust"]);
 
+const consoleTransportSchema = z.enum(["auto", "file", "websocket"]);
+
 const configSchema = z.object({
   panelUrl: z.string().url(),
   host: z.string().default("0.0.0.0"),
@@ -31,10 +33,16 @@ const configSchema = z.object({
     .transform((v) => v === "true"),
   policyOverridesPath: z.string().optional(),
   consoleMaxLines: z.coerce.number().int().min(1).max(500).default(100),
+  consoleTransport: consoleTransportSchema.default("auto"),
+  consoleDebug: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   consoleTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(12_000),
   consoleIdleMs: z.coerce.number().int().min(100).max(10_000).default(400),
   consoleConnectTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(10_000),
-  consoleAuthTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+  consoleWebSocketTimeoutMs: z.coerce.number().int().min(1000).max(30_000).default(4000),
+  consoleWebSocketAuthTimeoutMs: z.coerce.number().int().min(1000).max(30_000).default(5000),
   consoleSessionIdleMs: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
   consoleMaxSessions: z.coerce.number().int().min(1).max(200).default(32),
   fileMaxReadBytes: z.coerce.number().int().min(1024).max(5_242_880).default(262_144),
@@ -104,10 +112,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     policyAutoDetectEgg: env.POLICY_AUTO_DETECT_EGG,
     policyOverridesPath: env.POLICY_OVERRIDES_PATH,
     consoleMaxLines: env.CONSOLE_MAX_LINES,
+    consoleTransport: env.CONSOLE_TRANSPORT,
+    consoleDebug: env.CONSOLE_DEBUG,
     consoleTimeoutMs: env.CONSOLE_TIMEOUT_MS,
     consoleIdleMs: env.CONSOLE_IDLE_MS,
     consoleConnectTimeoutMs: env.CONSOLE_CONNECT_TIMEOUT_MS,
-    consoleAuthTimeoutMs: env.CONSOLE_AUTH_TIMEOUT_MS,
+    consoleWebSocketTimeoutMs: env.CONSOLE_WEBSOCKET_TIMEOUT_MS,
+    consoleWebSocketAuthTimeoutMs: env.CONSOLE_WEBSOCKET_AUTH_TIMEOUT_MS,
     consoleSessionIdleMs: env.CONSOLE_SESSION_IDLE_MS,
     consoleMaxSessions: env.CONSOLE_MAX_SESSIONS,
     fileMaxReadBytes: env.FILE_MAX_READ_BYTES,

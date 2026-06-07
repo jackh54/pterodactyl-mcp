@@ -283,6 +283,7 @@ export class ConsoleSessionManager {
     serverId: string,
     credentials: WebSocketCredentials,
     fn: (session: ConsoleSession) => Promise<T>,
+    connectOptions: ConsoleConnectOptions = {},
   ): Promise<T> {
     this.evictIdleSessions();
     this.evictOverflow();
@@ -294,7 +295,10 @@ export class ConsoleSessionManager {
     }
 
     entry.lastUsed = Date.now();
-    await entry.session.connect(credentials, this.connectOptions);
+    await entry.session.connect(credentials, {
+      ...this.connectOptions,
+      ...connectOptions,
+    });
 
     try {
       return await fn(entry.session);
