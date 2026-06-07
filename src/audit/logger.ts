@@ -14,9 +14,18 @@ export interface AuditEntry {
 }
 
 export class AuditLogger {
+  private fileLoggingEnabled: boolean;
+  private warnedAboutFileLogging = false;
+
   constructor(private readonly logPath?: string) {
+    this.fileLoggingEnabled = Boolean(logPath);
     if (logPath) {
-      mkdirSync(dirname(logPath), { recursive: true });
+      try {
+        mkdirSync(dirname(logPath), { recursive: true });
+      } catch (error) {
+        this.fileLoggingEnabled = false;
+        this.warnFileLoggingDisabled(error);
+      }
     }
   }
 
@@ -26,10 +35,27 @@ export class AuditLogger {
       timestamp: new Date().toISOString(),
     });
 
-    if (this.logPath) {
-      appendFileSync(this.logPath, `${line}\n`, "utf8");
-    } else {
-      console.log(`[audit] ${line}`);
+    if (this.logPath && this.fileLoggingEnabled) {
+      try {
+        appendFileSync(this.logPath, `${line}\n`, "utf8");
+        return;
+      } catch (error) {
+        this.fileLoggingEnabled = false;
+        this.warnFileLoggingDisabled(error);
+      }
     }
+
+    console.log(`[audit] ${line}`);
+  }
+
+  private warnFileLoggingDisabled(error: unknown): void {
+    if (this.warnedAboutFileLogging) {
+      return;
+    }
+    this.warnedAboutFileLogging = true;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[audit] File logging disabled for ${this.logPath ?? "unknown path"}: ${message}. Falling back to stdout.`,
+    );
   }
 }
