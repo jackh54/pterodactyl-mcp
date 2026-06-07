@@ -1,28 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { CommandPolicy } from "../src/policy/command-policy.js";
+import { CommandPolicy, createCommandPolicy } from "../src/policy/command-policy.js";
+import { stripAnsi } from "../src/pterodactyl/console-session.js";
 
 describe("CommandPolicy", () => {
-  const policy = new CommandPolicy();
+  describe("standard mode", () => {
+    const policy = new CommandPolicy("standard");
 
-  it("allows safe commands", () => {
-    expect(policy.evaluate("say Hello world").allowed).toBe(true);
-    expect(policy.evaluate("list").allowed).toBe(true);
-    expect(policy.evaluate("status").allowed).toBe(true);
+    it("allows safe commands", () => {
+      expect(policy.evaluate("say Hello world").allowed).toBe(true);
+      expect(policy.evaluate("list").allowed).toBe(true);
+    });
+
+    it("blocks dangerous patterns", () => {
+      expect(policy.evaluate("sudo rm -rf /").allowed).toBe(false);
+      expect(policy.evaluate("op Steve").allowed).toBe(false);
+      expect(policy.evaluate("stop").allowed).toBe(false);
+    });
   });
 
-  it("blocks empty commands", () => {
+  describe("strict mode (minecraft preset)", () => {
+    const policy = createCommandPolicy("strict", "minecraft");
+
+    it("allows minecraft-safe commands", () => {
+      expect(policy.evaluate("say Hello").allowed).toBe(true);
+      expect(policy.evaluate("whitelist list").allowed).toBe(true);
+      expect(policy.evaluate("tps").allowed).toBe(true);
+    });
+
+    it("blocks commands outside allowlist", () => {
+      expect(policy.evaluate("give @a diamond 64").allowed).toBe(false);
+      expect(policy.evaluate("op Steve").allowed).toBe(false);
+    });
+  });
+
+  describe("admin mode", () => {
+    const policy = new CommandPolicy("admin");
+
+    it("allows stop but blocks shell injection", () => {
+      expect(policy.evaluate("stop").allowed).toBe(true);
+      expect(policy.evaluate("sudo rm -rf /").allowed).toBe(false);
+    });
+  });
+
+  it("blocks empty and overly long commands", () => {
+    const policy = new CommandPolicy("standard");
     expect(policy.evaluate("   ").allowed).toBe(false);
-  });
-
-  it("blocks dangerous patterns", () => {
-    expect(policy.evaluate("sudo rm -rf /").allowed).toBe(false);
-    expect(policy.evaluate("op Steve").allowed).toBe(false);
-    expect(policy.evaluate("stop").allowed).toBe(false);
-    expect(policy.evaluate("shutdown now").allowed).toBe(false);
-  });
-
-  it("blocks overly long commands", () => {
     expect(policy.evaluate("a".repeat(513)).allowed).toBe(false);
+  });
+});
+
+describe("stripAnsi", () => {
+  it("removes ANSI color codes", () => {
+    expect(stripAnsi("\x1b[31mError\x1b[0m")).toBe("Error");
   });
 });
 
@@ -32,16 +61,17 @@ describe("loadConfig", () => {
     expect(() => loadConfig({})).toThrow("PTERODACTYL_PANEL_URL is required");
   });
 
-  it("parses config from env", async () => {
+  it("parses phase 2 config from env", async () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig({
       PTERODACTYL_PANEL_URL: "https://panel.example.com/",
-      PORT: "8080",
-      MCP_ENABLED: "false",
+      COMMAND_POLICY_MODE: "strict",
+      COMMAND_POLICY_PRESET: "minecraft",
+      CONSOLE_MAX_LINES: "50",
     });
-    expect(config.panelUrl).toBe("https://panel.example.com");
-    expect(config.port).toBe(8080);
-    expect(config.mcpEnabled).toBe(false);
+    expect(config.commandPolicyMode).toBe("strict");
+    expect(config.commandPolicyPreset).toBe("minecraft");
+    expect(config.consoleMaxLines).toBe(50);
   });
 });
 

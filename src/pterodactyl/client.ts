@@ -235,6 +235,17 @@ export class PterodactylClient {
     });
   }
 
+  async getWebSocketCredentials(serverId: string): Promise<{ token: string; socket: string }> {
+    const data = await this.request<{
+      data: { token: string; socket: string };
+    }>("GET", `/api/client/servers/${serverId}/websocket`);
+
+    return {
+      token: data.data.token,
+      socket: data.data.socket,
+    };
+  }
+
   hasPermission(server: ServerDetails, permission: string): boolean {
     return server.userPermissions.includes(permission);
   }

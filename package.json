@@ -1,6 +1,6 @@
 {
   "name": "pterodactyl-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Pterodactyl Panel — AI-assisted server management",
   "type": "module",
   "main": "dist/index.js",
@@ -18,5 +18,20 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   }
 }

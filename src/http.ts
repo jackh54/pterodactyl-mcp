@@ -1,29 +1,32 @@
 import { randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Config } from "./config.js";
 import { AuditLogger } from "./audit/logger.js";
 import { RateLimiter } from "./rate-limit.js";
+import { ConsoleSessionManager } from "./pterodactyl/console-session.js";
 import {
   authenticateRequest,
   extractBearerToken,
   sendUnauthorized,
-  type AuthContext,
 } from "./auth/middleware.js";
-import { createMcpServer } from "./tools/register-tools.js";
+import { createMcpServer } from "./mcp/create-server.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 interface SessionEntry {
   transport: StreamableHTTPServerTransport;
   server: McpServer;
-  auth: AuthContext;
 }
 
 export function createApp(config: Config): express.Application {
   const app = express();
   const audit = new AuditLogger(config.auditLogPath);
   const rateLimiter = new RateLimiter(config.rateLimitPerMinute);
+  const consoleSessions = new ConsoleSessionManager(
+    config.consoleSessionIdleMs,
+    config.consoleMaxSessions,
+  );
   const sessions = new Map<string, SessionEntry>();
 
   app.use(express.json({ limit: "1mb" }));
@@ -32,7 +35,9 @@ export function createApp(config: Config): express.Application {
     res.json({
       status: "ok",
       mcpEnabled: config.mcpEnabled,
-      version: "0.1.0",
+      version: "0.2.0",
+      commandPolicyMode: config.commandPolicyMode,
+      commandPolicyPreset: config.commandPolicyPreset,
     });
   });
 
@@ -84,7 +89,9 @@ export function createApp(config: Config): express.Application {
           auth,
           audit,
           rateLimiter,
+          config,
           clientIp,
+          consoleSessions,
         });
 
         const transport = new StreamableHTTPServerTransport({
@@ -92,11 +99,11 @@ export function createApp(config: Config): express.Application {
           enableDnsRebindingProtection: Boolean(config.allowedHosts?.length),
           allowedHosts: config.allowedHosts,
           onsessioninitialized: (id) => {
-            sessions.set(id, { transport, server, auth });
+            sessions.set(id, { transport, server });
           },
         });
 
-        entry = { transport, server, auth };
+        entry = { transport, server };
 
         transport.onclose = () => {
           if (transport.sessionId) {
@@ -187,5 +194,8 @@ export function startServer(config: Config): void {
     console.log(`MCP endpoint: http://${config.host}:${config.port}/mcp`);
     console.log(`Panel URL: ${config.panelUrl}`);
     console.log(`MCP enabled: ${config.mcpEnabled}`);
+    console.log(
+      `Command policy: ${config.commandPolicyMode} (preset: ${config.commandPolicyPreset})`,
+    );
   });
 }

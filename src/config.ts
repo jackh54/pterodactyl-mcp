@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const policyModeSchema = z.enum(["strict", "standard", "admin"]);
+const policyPresetSchema = z.enum(["generic", "minecraft", "rust"]);
+
 const configSchema = z.object({
   panelUrl: z.string().url(),
   host: z.string().default("0.0.0.0"),
@@ -14,6 +17,12 @@ const configSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? v.split(",").map((h) => h.trim()).filter(Boolean) : undefined)),
+  commandPolicyMode: policyModeSchema.default("standard"),
+  commandPolicyPreset: policyPresetSchema.default("generic"),
+  consoleMaxLines: z.coerce.number().int().min(1).max(500).default(100),
+  consoleTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(8000),
+  consoleSessionIdleMs: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
+  consoleMaxSessions: z.coerce.number().int().min(1).max(200).default(32),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -32,5 +41,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     auditLogPath: env.AUDIT_LOG_PATH,
     rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
     allowedHosts: env.ALLOWED_HOSTS,
+    commandPolicyMode: env.COMMAND_POLICY_MODE,
+    commandPolicyPreset: env.COMMAND_POLICY_PRESET,
+    consoleMaxLines: env.CONSOLE_MAX_LINES,
+    consoleTimeoutMs: env.CONSOLE_TIMEOUT_MS,
+    consoleSessionIdleMs: env.CONSOLE_SESSION_IDLE_MS,
+    consoleMaxSessions: env.CONSOLE_MAX_SESSIONS,
   });
 }

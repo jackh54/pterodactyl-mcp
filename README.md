@@ -2,19 +2,20 @@
 
 MCP server for [Pterodactyl Panel](https://pterodactyl.io). Lets AI clients like Cursor connect over HTTP, authenticate with a Pterodactyl Client API key, and manage only the servers that key has access to.
 
-## Features (Phase 1)
+## Features
 
+### Phase 1
 - **Streamable HTTP** MCP transport at `/mcp`
 - **Bearer auth** via Pterodactyl Client API keys (`ptlc_*`)
-- **Tools:**
-  - `list_accessible_servers` — list servers for the authenticated user
-  - `get_server` — server details and effective permissions
-  - `get_server_resources` — CPU, memory, disk, power state
-  - `send_console_command` — send a console command (with blocklist policy)
-- **Command blocklist** — rejects dangerous patterns (`sudo`, `op`, `stop`, etc.)
-- **Audit logging** — JSON-lines log of every tool invocation
-- **Admin toggle** — disable MCP with `MCP_ENABLED=false`
-- **Rate limiting** — per API key, configurable per minute
+- **Tools:** `list_accessible_servers`, `get_server`, `get_server_resources`, `send_console_command`
+- **Command blocklist**, audit logging, rate limiting, admin toggle
+
+### Phase 2
+- **`get_console_output`** — fetch recent console logs via WebSocket
+- **`send_console_command`** — optional `wait_for_output` to capture command response
+- **Command policy modes:** `strict`, `standard`, `admin` with egg presets (`generic`, `minecraft`, `rust`)
+- **MCP resources:** `server://{id}/status`, `server://list`
+- **MCP prompt:** `diagnose_server` — structured troubleshooting workflow
 
 ## Quick start
 
@@ -22,7 +23,7 @@ MCP server for [Pterodactyl Panel](https://pterodactyl.io). Lets AI clients like
 
 In your panel: **Account → API Credentials → Create API Key**
 
-Grant only the permissions you want the AI to have. For console commands, the key needs `control.console` on the target server(s).
+Grant only the permissions you want the AI to have. Console tools require `control.console` on target server(s).
 
 ### 2. Configure
 
@@ -49,8 +50,6 @@ docker compose up -d
 
 ## Connect from Cursor
 
-Add a remote MCP server in Cursor settings:
-
 ```json
 {
   "mcpServers": {
@@ -64,7 +63,41 @@ Add a remote MCP server in Cursor settings:
 }
 ```
 
-Replace the URL with your deployed MCP server address when not running locally.
+## MCP tools
+
+| Tool | Description |
+|------|-------------|
+| `list_accessible_servers` | List all servers for the authenticated user |
+| `get_server` | Server details and effective permissions |
+| `get_server_resources` | CPU, memory, disk, power state |
+| `get_console_output` | Recent console log lines via WebSocket |
+| `send_console_command` | Send a console command; set `wait_for_output: true` to capture response |
+
+## MCP resources
+
+| URI | Description |
+|-----|-------------|
+| `server://list` | All accessible servers |
+| `server://{server_id}/status` | Live status + resource usage for one server |
+
+## MCP prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `diagnose_server` | Gathers status, resources, and recent logs; guides the AI through troubleshooting |
+
+## Command policy modes
+
+| Mode | Behavior |
+|------|----------|
+| `standard` (default) | Blocklist dangerous commands (`sudo`, `op`, `stop`, etc.) |
+| `strict` | Only allowlisted commands (use `COMMAND_POLICY_PRESET` for game-specific lists) |
+| `admin` | Minimal blocks — only shell-injection patterns |
+
+```bash
+COMMAND_POLICY_MODE=strict
+COMMAND_POLICY_PRESET=minecraft
+```
 
 ## Environment variables
 
@@ -77,39 +110,24 @@ Replace the URL with your deployed MCP server address when not running locally.
 | `AUDIT_LOG_PATH` | No | stdout | Path for JSON-lines audit log |
 | `RATE_LIMIT_PER_MINUTE` | No | `60` | Max tool calls per API key per minute |
 | `ALLOWED_HOSTS` | No | — | Comma-separated hosts for DNS rebinding protection |
+| `COMMAND_POLICY_MODE` | No | `standard` | `strict`, `standard`, or `admin` |
+| `COMMAND_POLICY_PRESET` | No | `generic` | `generic`, `minecraft`, or `rust` (strict mode) |
+| `CONSOLE_MAX_LINES` | No | `100` | Max console lines per fetch |
+| `CONSOLE_TIMEOUT_MS` | No | `8000` | WebSocket collect timeout |
+| `CONSOLE_SESSION_IDLE_MS` | No | `300000` | Idle WebSocket session eviction |
+| `CONSOLE_MAX_SESSIONS` | No | `32` | Max concurrent console sessions |
 
 ## Security model
 
 1. **No admin keys** — only Pterodactyl **Client** API keys (`ptlc_*`) are accepted.
 2. **Panel ACL** — every tool call is scoped to the key owner's servers and permissions.
-3. **Command policy** — blocklist rejects high-risk console commands before they reach Wings.
+3. **Command policy** — strict/standard/admin modes with game-specific allowlists.
 4. **Audit trail** — all tool calls are logged with user, server, and outcome.
-
-## Architecture
-
-```
-Cursor (MCP client)
-    │  HTTPS + Bearer ptlc_*
-    ▼
-pterodactyl-mcp (/mcp)
-    │  Pterodactyl Client API
-    ▼
-Pterodactyl Panel → Wings → Game servers
-```
-
-## Development
-
-```bash
-npm run dev      # hot reload
-npm test         # unit tests
-npm run typecheck
-```
 
 ## Roadmap
 
-- **Phase 2:** WebSocket console output, power actions, MCP resources
-- **Phase 3:** Panel Laravel addon, full OAuth 2.1 login flow
-- **Phase 4:** Egg-specific command presets, file read tools
+- **Phase 3:** Power actions with confirmation, file read tools, Panel Laravel addon + OAuth
+- **Phase 4:** Egg-specific policy overrides, metrics dashboard
 
 ## License
 
