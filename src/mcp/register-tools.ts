@@ -111,6 +111,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
             session.fetchRecentOutput({
               maxLines: max_lines ?? ctx.config.consoleMaxLines,
               timeoutMs: ctx.config.consoleTimeoutMs,
+              idleMs: ctx.config.consoleIdleMs,
             }),
         );
 
@@ -161,6 +162,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
               session.sendCommandAndCollect(command, {
                 maxLines: Math.min(ctx.config.consoleMaxLines, 50),
                 timeoutMs: ctx.config.consoleTimeoutMs,
+                idleMs: ctx.config.consoleIdleMs,
               }),
           );
           auditSuccess(ctx, "send_console_command", args, server_id);

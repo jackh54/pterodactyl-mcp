@@ -25,6 +25,14 @@ interface WingsMessage {
   args: unknown[];
 }
 
+function normalizeEventName(event: string): string {
+  return event.trim().toLowerCase();
+}
+
+function jwtErrorDetail(message: WingsMessage): string {
+  return typeof message.args[0] === "string" ? `: ${message.args[0]}` : "";
+}
+
 export interface ConsoleConnectOptions {
   handshakeTimeoutMs?: number;
   authTimeoutMs?: number;
@@ -48,14 +56,19 @@ export class ConsoleSession {
     credentials: WebSocketCredentials,
     options: ConsoleConnectOptions = {},
   ): Promise<void> {
-    if (this.ws && this.authenticated && this.credentials?.token === credentials.token) {
+    const WebSocket = await importWebSocket();
+    if (
+      this.ws &&
+      this.authenticated &&
+      this.credentials?.token === credentials.token &&
+      this.ws.readyState === WebSocket.OPEN
+    ) {
       return;
     }
 
     await this.close();
     this.credentials = credentials;
 
-    const WebSocket = await importWebSocket();
     const handshakeTimeoutMs = options.handshakeTimeoutMs ?? 10_000;
     const authTimeoutMs = options.authTimeoutMs ?? 10_000;
     const ws = new WebSocket(credentials.socket, {
@@ -66,6 +79,7 @@ export class ConsoleSession {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let authSent = false;
       const seenEvents: string[] = [];
 
       const finish = (error?: Error) => {
@@ -75,8 +89,14 @@ export class ConsoleSession {
         ws.off("message", onMessage);
         ws.off("error", onError);
         ws.off("close", onClose);
-        if (error) reject(error);
-        else resolve();
+        if (error) {
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+          }
+          reject(error);
+        } else {
+          resolve();
+        }
       };
 
       const hardTimeout = setTimeout(() => {
@@ -108,12 +128,18 @@ export class ConsoleSession {
       const onMessage = (data: unknown) => {
         try {
           const message = JSON.parse(String(data)) as WingsMessage;
+          const event = normalizeEventName(message.event);
           seenEvents.push(message.event);
-          if (message.event === "jwt error" || message.event === "token expired") {
-            finish(new Error(`WebSocket auth failed: ${message.event}`));
+          if (event === "jwt error" || event === "token expired") {
+            finish(new Error(`WebSocket auth failed (${message.event}${jwtErrorDetail(message)})`));
             return;
           }
-          if (message.event === "auth success") {
+          if (event === "auth success") {
+            this.authenticated = true;
+            finish();
+            return;
+          }
+          if (authSent && !this.authenticated && event === "status") {
             this.authenticated = true;
             finish();
           }
@@ -122,13 +148,18 @@ export class ConsoleSession {
         }
       };
 
-      ws.once("open", () => {
+      const sendAuth = () => {
+        authSent = true;
         ws.send(JSON.stringify({ event: "auth", args: [credentials.token] }));
-      });
+      };
 
       ws.on("message", onMessage);
       ws.once("error", onError);
       ws.on("close", onClose);
+      ws.once("open", sendAuth);
+      if (ws.readyState === WebSocket.OPEN) {
+        sendAuth();
+      }
     });
 
     this.ws = ws;
@@ -185,12 +216,17 @@ export class ConsoleSession {
   }): Promise<string[]> {
     const lines: string[] = [];
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let collectionError: Error | null = null;
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const finish = () => {
         clearTimeout(hardTimeout);
         if (idleTimer) clearTimeout(idleTimer);
         this.ws?.off("message", onMessage);
+        if (collectionError) {
+          reject(collectionError);
+          return;
+        }
         resolve(lines);
       };
 
@@ -199,7 +235,8 @@ export class ConsoleSession {
       const onMessage = (data: unknown) => {
         try {
           const message = JSON.parse(String(data)) as WingsMessage;
-          if (message.event === "console output" && typeof message.args[0] === "string") {
+          const event = normalizeEventName(message.event);
+          if (event === "console output" && typeof message.args[0] === "string") {
             const line = stripAnsi(message.args[0]).trimEnd();
             if (line.length > 0) {
               lines.push(line);
@@ -210,7 +247,10 @@ export class ConsoleSession {
             }
             if (idleTimer) clearTimeout(idleTimer);
             idleTimer = setTimeout(() => finish(), options.idleMs);
-          } else if (message.event === "token expired") {
+          } else if (event === "jwt error" || event === "token expired") {
+            collectionError = new Error(
+              `WebSocket session expired while collecting console output (${message.event}${jwtErrorDetail(message)})`,
+            );
             finish();
           }
         } catch {
