@@ -1,0 +1,8 @@
+{
+  "tokens": {
+    "mcp_example_token_for_cursor_user": {
+      "pterodactylApiKey": "ptlc_REPLACE_WITH_REAL_KEY",
+      "label": "cursor-alice"
+    }
+  }
+}
