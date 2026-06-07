@@ -60,6 +60,7 @@ const configSchema = z.object({
   mcpTokenMapPath: z.string().optional(),
   panelRequestTimeoutMs: z.coerce.number().int().min(1000).max(120_000).default(30_000),
   wingsSocketHost: z.string().optional(),
+  wingsWebSocketOrigin: z.string().url().optional(),
   wingsTlsInsecure: z
     .enum(["true", "false"])
     .default("false")
@@ -68,6 +69,7 @@ const configSchema = z.object({
 
 export type Config = z.infer<typeof configSchema> & {
   tokenMap: TokenMap;
+  wingsWebSocketOrigin: string;
 };
 
 function validateJsonFile(path: string, label: string): void {
@@ -118,6 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpTokenMapPath: env.MCP_TOKEN_MAP_PATH,
     panelRequestTimeoutMs: env.PANEL_REQUEST_TIMEOUT_MS,
     wingsSocketHost: env.WINGS_SOCKET_HOST,
+    wingsWebSocketOrigin: env.WINGS_WEBSOCKET_ORIGIN,
     wingsTlsInsecure: env.WINGS_TLS_INSECURE,
   });
 
@@ -130,5 +133,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const tokenMap = loadTokenMap(config.mcpTokenMapPath);
 
-  return { ...config, tokenMap };
+  return {
+    ...config,
+    tokenMap,
+    wingsWebSocketOrigin: config.wingsWebSocketOrigin ?? config.panelUrl,
+  };
 }

@@ -29,6 +29,7 @@ export interface ConsoleConnectOptions {
   handshakeTimeoutMs?: number;
   authTimeoutMs?: number;
   rejectUnauthorized?: boolean;
+  origin?: string;
 }
 
 async function importWebSocket(): Promise<typeof import("ws").default> {
@@ -60,6 +61,7 @@ export class ConsoleSession {
     const ws = new WebSocket(credentials.socket, {
       handshakeTimeout: handshakeTimeoutMs,
       rejectUnauthorized: options.rejectUnauthorized ?? true,
+      origin: options.origin,
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -88,10 +90,13 @@ export class ConsoleSession {
       }, authTimeoutMs);
 
       const onError = (error: Error) => {
+        let message = error.message;
+        if (message.includes("403")) {
+          message +=
+            ". Wings rejected the WebSocket Origin header — set WINGS_WEBSOCKET_ORIGIN to your panel URL if it differs from PTERODACTYL_PANEL_URL.";
+        }
         finish(
-          new Error(
-            `WebSocket connection failed for ${credentials.socket}: ${error.message}`,
-          ),
+          new Error(`WebSocket connection failed for ${credentials.socket}: ${message}`),
         );
       };
       const onClose = () => {

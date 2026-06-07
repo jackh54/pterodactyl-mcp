@@ -40,6 +40,7 @@ export function createApp(config: Config, metricsRegistry = new MetricsRegistry(
       handshakeTimeoutMs: config.consoleConnectTimeoutMs,
       authTimeoutMs: config.consoleAuthTimeoutMs,
       rejectUnauthorized: !config.wingsTlsInsecure,
+      origin: config.wingsWebSocketOrigin,
     },
   );
   const confirmationStore = new ConfirmationStore(config.powerConfirmationTtlMs);
