@@ -38,7 +38,7 @@ export function createApp(config: Config, metricsRegistry = new MetricsRegistry(
     config.consoleMaxSessions,
     {
       handshakeTimeoutMs: config.consoleConnectTimeoutMs,
-      authTimeoutMs: config.consoleAuthTimeoutMs,
+      authTimeoutMs: config.consoleWebSocketAuthTimeoutMs,
       rejectUnauthorized: !config.wingsTlsInsecure,
       origin: config.wingsWebSocketOrigin,
     },

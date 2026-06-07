@@ -12,6 +12,7 @@ import {
   checkRateLimit,
   errorResult,
   formatPterodactylError,
+  fetchConsoleOutput,
   prepareConsoleAccess,
   requireServerWithConsole,
   textResult,
@@ -87,7 +88,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
 
   server.tool(
     "get_console_output",
-    "Fetch recent console log lines from a server via WebSocket.",
+    "Fetch recent console log lines. Uses server log files when available (fast), otherwise Wings WebSocket.",
     {
       server_id: z.string().min(8).describe("Server short identifier or UUID"),
       max_lines: z
@@ -102,24 +103,20 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
       checkRateLimit(ctx, "get_console_output");
       const args = { server_id, max_lines };
       try {
-        const { credentials } = await prepareConsoleAccess(ctx, server_id, "get_console_output");
-        const lines = await ctx.consoleSessions.withSession(
-          sessionKey(ctx, server_id),
+        const result = await fetchConsoleOutput(
+          ctx,
           server_id,
-          credentials,
-          (session) =>
-            session.fetchRecentOutput({
-              maxLines: max_lines ?? ctx.config.consoleMaxLines,
-              timeoutMs: ctx.config.consoleTimeoutMs,
-              idleMs: ctx.config.consoleIdleMs,
-            }),
+          "get_console_output",
+          max_lines ?? ctx.config.consoleMaxLines,
         );
 
         auditSuccess(ctx, "get_console_output", args, server_id);
         return textResult({
           serverId: server_id,
-          lineCount: lines.length,
-          lines,
+          source: result.source,
+          filePath: result.filePath,
+          lineCount: result.lines.length,
+          lines: result.lines,
         });
       } catch (error) {
         const message = formatPterodactylError(error);

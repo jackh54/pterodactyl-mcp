@@ -1,8 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { McpContext } from "./context.js";
-import { sessionKey } from "./context.js";
-import { formatPterodactylError, prepareConsoleAccess, requireServerWithConsole } from "./helpers.js";
+import { formatPterodactylError, fetchConsoleOutput, requireServerWithConsole } from "./helpers.js";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -36,18 +35,8 @@ export function registerPrompts(server: McpServer, ctx: McpContext): void {
       let recentLogs: string[] = [];
       if (resources.currentState === "running" && !server.isSuspended) {
         try {
-          const { credentials } = await prepareConsoleAccess(ctx, server_id, "prompt:diagnose_server");
-          recentLogs = await ctx.consoleSessions.withSession(
-            sessionKey(ctx, server_id),
-            server_id,
-            credentials,
-            (session) =>
-              session.fetchRecentOutput({
-                maxLines: 30,
-                timeoutMs: ctx.config.consoleTimeoutMs,
-                idleMs: ctx.config.consoleIdleMs,
-              }),
-          );
+          const result = await fetchConsoleOutput(ctx, server_id, "prompt:diagnose_server", 30);
+          recentLogs = result.lines;
         } catch (error) {
           recentLogs = [`(Could not fetch console output: ${formatPterodactylError(error)})`];
         }
