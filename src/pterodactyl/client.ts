@@ -252,6 +252,8 @@ export class PterodactylClient {
           io: number;
           cpu: number;
         };
+        server_owner?: boolean;
+        user_permissions?: string[];
       }> & {
         meta?: {
           is_server_owner?: boolean;
@@ -273,8 +275,14 @@ export class PterodactylClient {
       invocation: data.attributes.invocation,
       dockerImage: data.attributes.docker_image,
       limits: data.attributes.limits,
-      userPermissions: data.meta?.user_permissions ?? [],
-      isServerOwner: data.meta?.is_server_owner ?? false,
+      userPermissions:
+        data.meta?.user_permissions ??
+        data.attributes.user_permissions ??
+        [],
+      isServerOwner:
+        data.meta?.is_server_owner ??
+        data.attributes.server_owner ??
+        false,
     };
   }
 
@@ -476,6 +484,12 @@ export class PterodactylClient {
   }
 
   hasPermission(server: ServerDetails, permission: string): boolean {
+    if (server.isServerOwner) {
+      return true;
+    }
+    if (server.userPermissions.includes("*")) {
+      return true;
+    }
     return server.userPermissions.includes(permission);
   }
 }
