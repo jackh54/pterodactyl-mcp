@@ -31,7 +31,9 @@ const configSchema = z.object({
     .transform((v) => v === "true"),
   policyOverridesPath: z.string().optional(),
   consoleMaxLines: z.coerce.number().int().min(1).max(500).default(100),
-  consoleTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(8000),
+  consoleTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(5000),
+  consoleConnectTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+  consoleAuthTimeoutMs: z.coerce.number().int().min(1000).max(60_000).default(10_000),
   consoleSessionIdleMs: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
   consoleMaxSessions: z.coerce.number().int().min(1).max(200).default(32),
   fileMaxReadBytes: z.coerce.number().int().min(1024).max(5_242_880).default(262_144),
@@ -57,6 +59,11 @@ const configSchema = z.object({
   mcpAdminSecret: z.string().optional(),
   mcpTokenMapPath: z.string().optional(),
   panelRequestTimeoutMs: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  wingsSocketHost: z.string().optional(),
+  wingsTlsInsecure: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type Config = z.infer<typeof configSchema> & {
@@ -95,6 +102,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     policyOverridesPath: env.POLICY_OVERRIDES_PATH,
     consoleMaxLines: env.CONSOLE_MAX_LINES,
     consoleTimeoutMs: env.CONSOLE_TIMEOUT_MS,
+    consoleConnectTimeoutMs: env.CONSOLE_CONNECT_TIMEOUT_MS,
+    consoleAuthTimeoutMs: env.CONSOLE_AUTH_TIMEOUT_MS,
     consoleSessionIdleMs: env.CONSOLE_SESSION_IDLE_MS,
     consoleMaxSessions: env.CONSOLE_MAX_SESSIONS,
     fileMaxReadBytes: env.FILE_MAX_READ_BYTES,
@@ -108,6 +117,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpAdminSecret: env.MCP_ADMIN_SECRET,
     mcpTokenMapPath: env.MCP_TOKEN_MAP_PATH,
     panelRequestTimeoutMs: env.PANEL_REQUEST_TIMEOUT_MS,
+    wingsSocketHost: env.WINGS_SOCKET_HOST,
+    wingsTlsInsecure: env.WINGS_TLS_INSECURE,
   });
 
   if (config.policyOverridesPath) {

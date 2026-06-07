@@ -12,6 +12,7 @@ import {
   checkRateLimit,
   errorResult,
   formatPterodactylError,
+  prepareConsoleAccess,
   requireServerWithConsole,
   textResult,
 } from "./helpers.js";
@@ -101,13 +102,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
       checkRateLimit(ctx, "get_console_output");
       const args = { server_id, max_lines };
       try {
-        const serverDetails = await requireServerWithConsole(ctx, server_id, "get_console_output");
-        if (serverDetails.isSuspended || serverDetails.isInstalling) {
-          auditDenied(ctx, "get_console_output", args, "Server is not in a runnable state", server_id);
-          return errorResult("Server is suspended or still installing.");
-        }
-
-        const credentials = await ctx.auth.client.getWebSocketCredentials(server_id);
+        const { credentials } = await prepareConsoleAccess(ctx, server_id, "get_console_output");
         const lines = await ctx.consoleSessions.withSession(
           sessionKey(ctx, server_id),
           server_id,
@@ -150,11 +145,6 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
 
       try {
         const serverDetails = await requireServerWithConsole(ctx, server_id, "send_console_command");
-        if (serverDetails.isSuspended || serverDetails.isInstalling) {
-          auditDenied(ctx, "send_console_command", args, "Server is not in a runnable state", server_id);
-          return errorResult("Server is suspended or still installing.");
-        }
-
         const policy = ctx.policyResolver.forServer(server_id, serverDetails).evaluate(command);
         if (!policy.allowed) {
           auditDenied(ctx, "send_console_command", args, policy.reason ?? "Command blocked", server_id);
@@ -162,7 +152,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
         }
 
         if (wait_for_output) {
-          const credentials = await ctx.auth.client.getWebSocketCredentials(server_id);
+          const { credentials } = await prepareConsoleAccess(ctx, server_id, "send_console_command");
           const result = await ctx.consoleSessions.withSession(
             sessionKey(ctx, server_id),
             server_id,
@@ -180,6 +170,20 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
             policyMode: policy.mode,
             ...result,
           });
+        }
+
+        const resources = await ctx.auth.client.getServerResources(server_id);
+        if (resources.currentState !== "running") {
+          auditDenied(
+            ctx,
+            "send_console_command",
+            args,
+            `Server is ${resources.currentState}`,
+            server_id,
+          );
+          return errorResult(
+            `Console unavailable: server is ${resources.currentState}. Start the server first.`,
+          );
         }
 
         await ctx.auth.client.sendCommand(server_id, command);

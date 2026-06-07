@@ -36,6 +36,11 @@ export function createApp(config: Config, metricsRegistry = new MetricsRegistry(
   const consoleSessions = new ConsoleSessionManager(
     config.consoleSessionIdleMs,
     config.consoleMaxSessions,
+    {
+      handshakeTimeoutMs: config.consoleConnectTimeoutMs,
+      authTimeoutMs: config.consoleAuthTimeoutMs,
+      rejectUnauthorized: !config.wingsTlsInsecure,
+    },
   );
   const confirmationStore = new ConfirmationStore(config.powerConfirmationTtlMs);
   const actionConfirmationStore = new ActionConfirmationStore(config.powerConfirmationTtlMs);

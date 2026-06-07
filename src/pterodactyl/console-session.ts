@@ -25,6 +25,12 @@ interface WingsMessage {
   args: unknown[];
 }
 
+export interface ConsoleConnectOptions {
+  handshakeTimeoutMs?: number;
+  authTimeoutMs?: number;
+  rejectUnauthorized?: boolean;
+}
+
 async function importWebSocket(): Promise<typeof import("ws").default> {
   const mod = await import("ws");
   return mod.default;
@@ -37,7 +43,10 @@ export class ConsoleSession {
 
   constructor(private readonly serverId: string) {}
 
-  async connect(credentials: WebSocketCredentials): Promise<void> {
+  async connect(
+    credentials: WebSocketCredentials,
+    options: ConsoleConnectOptions = {},
+  ): Promise<void> {
     if (this.ws && this.authenticated && this.credentials?.token === credentials.token) {
       return;
     }
@@ -46,7 +55,12 @@ export class ConsoleSession {
     this.credentials = credentials;
 
     const WebSocket = await importWebSocket();
-    const ws = new WebSocket(credentials.socket);
+    const handshakeTimeoutMs = options.handshakeTimeoutMs ?? 10_000;
+    const authTimeoutMs = options.authTimeoutMs ?? 10_000;
+    const ws = new WebSocket(credentials.socket, {
+      handshakeTimeout: handshakeTimeoutMs,
+      rejectUnauthorized: options.rejectUnauthorized ?? true,
+    });
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -66,10 +80,20 @@ export class ConsoleSession {
       const hardTimeout = setTimeout(() => {
         const events =
           seenEvents.length > 0 ? ` (received: ${seenEvents.join(", ")})` : "";
-        finish(new Error(`WebSocket authentication timed out${events}`));
-      }, 15_000);
+        finish(
+          new Error(
+            `WebSocket authentication timed out after ${authTimeoutMs}ms connecting to ${credentials.socket}${events}`,
+          ),
+        );
+      }, authTimeoutMs);
 
-      const onError = (error: Error) => finish(error);
+      const onError = (error: Error) => {
+        finish(
+          new Error(
+            `WebSocket connection failed for ${credentials.socket}: ${error.message}`,
+          ),
+        );
+      };
       const onClose = () => {
         if (!this.authenticated) {
           finish(new Error("WebSocket closed before authentication completed"));
@@ -206,6 +230,7 @@ export class ConsoleSessionManager {
   constructor(
     private readonly idleTimeoutMs: number,
     private readonly maxSessions: number,
+    private readonly connectOptions: ConsoleConnectOptions = {},
   ) {}
 
   async withSession<T>(
@@ -224,7 +249,7 @@ export class ConsoleSessionManager {
     }
 
     entry.lastUsed = Date.now();
-    await entry.session.connect(credentials);
+    await entry.session.connect(credentials, this.connectOptions);
 
     try {
       return await fn(entry.session);
