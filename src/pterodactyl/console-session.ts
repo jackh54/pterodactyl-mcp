@@ -50,6 +50,7 @@ export class ConsoleSession {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      const seenEvents: string[] = [];
 
       const finish = (error?: Error) => {
         if (settled) return;
@@ -57,19 +58,28 @@ export class ConsoleSession {
         clearTimeout(hardTimeout);
         ws.off("message", onMessage);
         ws.off("error", onError);
+        ws.off("close", onClose);
         if (error) reject(error);
         else resolve();
       };
 
       const hardTimeout = setTimeout(() => {
-        finish(new Error("WebSocket authentication timed out"));
-      }, 10_000);
+        const events =
+          seenEvents.length > 0 ? ` (received: ${seenEvents.join(", ")})` : "";
+        finish(new Error(`WebSocket authentication timed out${events}`));
+      }, 15_000);
 
       const onError = (error: Error) => finish(error);
+      const onClose = () => {
+        if (!this.authenticated) {
+          finish(new Error("WebSocket closed before authentication completed"));
+        }
+      };
 
       const onMessage = (data: unknown) => {
         try {
           const message = JSON.parse(String(data)) as WingsMessage;
+          seenEvents.push(message.event);
           if (message.event === "jwt error" || message.event === "token expired") {
             finish(new Error(`WebSocket auth failed: ${message.event}`));
             return;
@@ -89,6 +99,7 @@ export class ConsoleSession {
 
       ws.on("message", onMessage);
       ws.once("error", onError);
+      ws.on("close", onClose);
     });
 
     this.ws = ws;
