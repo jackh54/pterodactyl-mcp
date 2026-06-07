@@ -62,9 +62,8 @@ export class ConsoleSession {
       };
 
       const hardTimeout = setTimeout(() => {
-        this.authenticated = true;
-        finish();
-      }, 2000);
+        finish(new Error("WebSocket authentication timed out"));
+      }, 10_000);
 
       const onError = (error: Error) => finish(error);
 
@@ -75,7 +74,7 @@ export class ConsoleSession {
             finish(new Error(`WebSocket auth failed: ${message.event}`));
             return;
           }
-          if (!this.authenticated) {
+          if (message.event === "auth success") {
             this.authenticated = true;
             finish();
           }

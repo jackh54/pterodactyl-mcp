@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { McpContext } from "./context.js";
+import { sessionKey } from "./context.js";
 import { formatPterodactylError, requireServerWithConsole } from "./helpers.js";
 
 function formatBytes(bytes: number): string {
@@ -37,7 +38,7 @@ export function registerPrompts(server: McpServer, ctx: McpContext): void {
         try {
           const credentials = await ctx.auth.client.getWebSocketCredentials(server_id);
           recentLogs = await ctx.consoleSessions.withSession(
-            `${ctx.auth.tokenFingerprint}:${server_id}`,
+            sessionKey(ctx, server_id),
             server_id,
             credentials,
             (session) =>

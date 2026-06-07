@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import type { Config } from "../config.js";
 
 interface RegisteredClient {
   clientId: string;
+  clientSecretHash: string;
   clientName: string;
   redirectUris: string[];
   createdAt: string;
@@ -60,6 +61,7 @@ export function mountOAuthRoutes(app: express.Application, config: Config): void
 
     registeredClients.set(clientId, {
       clientId,
+      clientSecretHash: hashClientSecret(clientSecret),
       clientName,
       redirectUris,
       createdAt: new Date().toISOString(),
@@ -91,6 +93,10 @@ export function mountOAuthRoutes(app: express.Application, config: Config): void
         "Token exchange is not yet implemented. Use a Pterodactyl Client API key (ptlc_*) or a mapped MCP token via MCP_TOKEN_MAP_PATH.",
     });
   });
+}
+
+function hashClientSecret(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex");
 }
 
 function extractAdminBearer(req: Request): string | null {

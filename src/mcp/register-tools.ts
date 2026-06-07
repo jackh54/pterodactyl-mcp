@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { PterodactylApiError } from "../pterodactyl/client.js";
 import type { McpContext } from "./context.js";
 import { sessionKey } from "./context.js";
 import { registerFileTools } from "./register-file-tools.js";
@@ -193,10 +192,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
           message: "Command sent to server console.",
         });
       } catch (error) {
-        const message =
-          error instanceof PterodactylApiError
-            ? `${error.message} (HTTP ${error.status})`
-            : formatPterodactylError(error);
+        const message = formatPterodactylError(error);
         auditError(ctx, "send_console_command", args, message, server_id);
         return errorResult(message);
       }

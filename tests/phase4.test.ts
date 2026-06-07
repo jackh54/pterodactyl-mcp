@@ -25,6 +25,15 @@ describe("Phase 4 — egg auto-detection", () => {
     ).toBe("rust");
   });
 
+  it("does not false-positive on unrelated rust substring", () => {
+    expect(
+      detectEggPreset({
+        dockerImage: "ghcr.io/example/trusted-server",
+        invocation: "./DedicatedServer",
+      }),
+    ).toBeNull();
+  });
+
   it("applies auto-detected preset in policy resolver", () => {
     const resolver = new PolicyResolver("strict", "generic", {}, true);
     const policy = resolver.forServer("srv1", {
@@ -37,11 +46,17 @@ describe("Phase 4 — egg auto-detection", () => {
 });
 
 describe("Phase 4 — action confirmation", () => {
-  it("confirms write_file actions with fingerprint", () => {
+  it("confirms write_file actions with fingerprint including content", () => {
     const store = new ActionConfirmationStore(60_000);
-    const fp = ActionConfirmationStore.fingerprint("write_file", "abc12345", "/server.properties");
+    const fp = ActionConfirmationStore.writeFileFingerprint("abc12345", "/server.properties", "key=value");
     const pending = store.create(1, "abc12345", "write_file", fp);
     expect(store.consume(pending.token, 1, "abc12345", "write_file", fp).ok).toBe(true);
+    const differentContent = ActionConfirmationStore.writeFileFingerprint(
+      "abc12345",
+      "/server.properties",
+      "key=other",
+    );
+    expect(differentContent).not.toBe(fp);
   });
 });
 

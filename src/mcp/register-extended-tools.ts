@@ -51,10 +51,10 @@ export function registerExtendedTools(server: McpServer, ctx: McpContext): void 
           );
         }
 
-        const fingerprint = ActionConfirmationStore.fingerprint(
-          "write_file",
+        const fingerprint = ActionConfirmationStore.writeFileFingerprint(
           server_id,
           pathResult.normalized,
+          content,
         );
 
         if (!confirmation_token) {

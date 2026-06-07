@@ -82,6 +82,11 @@ export class ActionConfirmationStore {
       .slice(0, 16);
   }
 
+  static writeFileFingerprint(serverId: string, path: string, content: string): string {
+    const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+    return ActionConfirmationStore.fingerprint("write_file", serverId, `${path}:${contentHash}`);
+  }
+
   private evictExpired(): void {
     const now = Date.now();
     for (const [token, entry] of this.pending) {

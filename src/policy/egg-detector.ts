@@ -7,7 +7,7 @@ export function detectEggPreset(server: Pick<ServerDetails, "dockerImage" | "inv
   if (/minecraft|paper|spigot|bukkit|forge|fabric|velocity|waterfall|purpur|pufferfish|server\.jar/.test(haystack)) {
     return "minecraft";
   }
-  if (/rust/.test(haystack)) {
+  if (/\brust\b|\brustdedicated\b/.test(haystack)) {
     return "rust";
   }
 

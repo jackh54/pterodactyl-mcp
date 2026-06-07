@@ -1,5 +1,5 @@
 const BLOCKED_PATH_PATTERNS: RegExp[] = [
-  /\.\./,
+  /(^|\/)\.\.(\/|$)/,
   /\0/,
   /^\/proc(\/|$)/,
   /^\/sys(\/|$)/,

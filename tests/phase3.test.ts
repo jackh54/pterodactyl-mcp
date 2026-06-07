@@ -56,7 +56,12 @@ describe("normalizeServerPath", () => {
 
   it("blocks path traversal and sensitive files", () => {
     expect(normalizeServerPath("/../etc/passwd").valid).toBe(false);
+    expect(normalizeServerPath("/foo/../bar").valid).toBe(false);
     expect(normalizeServerPath("/.env").valid).toBe(false);
+  });
+
+  it("allows paths with double dots in segment names", () => {
+    expect(normalizeServerPath("/foo..bar/config").valid).toBe(true);
   });
 });
 

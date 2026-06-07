@@ -110,7 +110,7 @@ export function registerFileTools(server: McpServer, ctx: McpContext): void {
       const args = { server_id, page, per_page };
 
       try {
-        await ctx.auth.client.getServer(server_id);
+        await requireServerWithPermission(ctx, server_id, "activity.read", "get_server_activity");
         const activity = await ctx.auth.client.getServerActivity(
           server_id,
           page ?? 1,

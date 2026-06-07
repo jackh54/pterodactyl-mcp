@@ -1,7 +1,7 @@
 import { PterodactylClient, PterodactylApiError } from "../pterodactyl/client.js";
 import type { Config } from "../config.js";
 import type { AccountInfo } from "../pterodactyl/client.js";
-import { loadTokenMap, resolveApiToken } from "./token-map.js";
+import { resolveApiToken } from "./token-map.js";
 
 export interface AuthContext {
   client: PterodactylClient;
@@ -29,8 +29,7 @@ export async function authenticateRequest(
   config: Config,
   token: string,
 ): Promise<AuthContext> {
-  const tokenMap = loadTokenMap(config.mcpTokenMapPath);
-  const apiKey = resolveApiToken(token, tokenMap);
+  const apiKey = resolveApiToken(token, config.tokenMap);
   const client = new PterodactylClient(config.panelUrl, apiKey);
   const account = await client.validateAccount();
 

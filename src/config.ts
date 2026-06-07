@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readFileSync, existsSync } from "node:fs";
+import { loadTokenMap, type TokenMap } from "./auth/token-map.js";
 
 const policyModeSchema = z.enum(["strict", "standard", "admin"]);
 const policyPresetSchema = z.enum(["generic", "minecraft", "rust"]);
@@ -57,7 +58,9 @@ const configSchema = z.object({
   mcpTokenMapPath: z.string().optional(),
 });
 
-export type Config = z.infer<typeof configSchema>;
+export type Config = z.infer<typeof configSchema> & {
+  tokenMap: TokenMap;
+};
 
 function validateJsonFile(path: string, label: string): void {
   if (!existsSync(path)) {
@@ -112,5 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     validateJsonFile(config.mcpTokenMapPath, "MCP_TOKEN_MAP_PATH");
   }
 
-  return config;
+  const tokenMap = loadTokenMap(config.mcpTokenMapPath);
+
+  return { ...config, tokenMap };
 }

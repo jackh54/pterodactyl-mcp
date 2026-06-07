@@ -13,7 +13,12 @@ export function loadTokenMap(path?: string): TokenMap {
   }
 
   const raw = readFileSync(path, "utf8");
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Token map is not valid JSON: ${path}`);
+  }
   if (
     typeof parsed === "object" &&
     parsed !== null &&
