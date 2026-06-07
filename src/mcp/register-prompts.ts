@@ -45,6 +45,7 @@ export function registerPrompts(server: McpServer, ctx: McpContext): void {
               session.fetchRecentOutput({
                 maxLines: 30,
                 timeoutMs: ctx.config.consoleTimeoutMs,
+                idleMs: ctx.config.consoleIdleMs,
               }),
           );
         } catch (error) {

@@ -322,13 +322,21 @@ export class PterodactylClient {
 
   async getWebSocketCredentials(serverId: string): Promise<{ token: string; socket: string }> {
     const data = await this.request<{
-      data: { token: string; socket: string };
+      data?: { token?: string; socket?: string };
+      attributes?: { token?: string; socket?: string };
     }>("GET", `/api/client/servers/${serverId}/websocket`);
 
-    return {
-      token: data.data.token,
-      socket: data.data.socket,
-    };
+    const token = data.data?.token ?? data.attributes?.token;
+    const socket = data.data?.socket ?? data.attributes?.socket;
+
+    if (!token || !socket) {
+      throw new PterodactylApiError(
+        "Panel returned invalid websocket credentials (missing token or socket URL)",
+        502,
+      );
+    }
+
+    return { token, socket };
   }
 
   async sendPowerAction(serverId: string, signal: PowerSignal): Promise<void> {
