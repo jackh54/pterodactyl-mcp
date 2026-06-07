@@ -6,11 +6,13 @@ import type { Config } from "./config.js";
 import { AuditLogger } from "./audit/logger.js";
 import { RateLimiter } from "./rate-limit.js";
 import { ConsoleSessionManager } from "./pterodactyl/console-session.js";
+import { createIpAllowlistMiddleware, getClientIp } from "./auth/ip-allowlist.js";
 import {
   authenticateRequest,
   extractBearerToken,
   sendUnauthorized,
 } from "./auth/middleware.js";
+import { ConfirmationStore } from "./power/confirmation-store.js";
 import { createMcpServer } from "./mcp/create-server.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -21,13 +23,17 @@ interface SessionEntry {
 
 export function createApp(config: Config): express.Application {
   const app = express();
+  app.set("trust proxy", true);
+
   const audit = new AuditLogger(config.auditLogPath);
   const rateLimiter = new RateLimiter(config.rateLimitPerMinute);
   const consoleSessions = new ConsoleSessionManager(
     config.consoleSessionIdleMs,
     config.consoleMaxSessions,
   );
+  const confirmationStore = new ConfirmationStore(config.powerConfirmationTtlMs);
   const sessions = new Map<string, SessionEntry>();
+  const ipAllowlist = createIpAllowlistMiddleware(config.allowedIps);
 
   app.use(express.json({ limit: "1mb" }));
 
@@ -35,9 +41,11 @@ export function createApp(config: Config): express.Application {
     res.json({
       status: "ok",
       mcpEnabled: config.mcpEnabled,
-      version: "0.2.0",
+      version: "0.3.0",
       commandPolicyMode: config.commandPolicyMode,
       commandPolicyPreset: config.commandPolicyPreset,
+      powerAutoConfirm: config.powerAutoConfirm,
+      ipAllowlistEnabled: Boolean(config.allowedIps?.length),
     });
   });
 
@@ -51,6 +59,7 @@ export function createApp(config: Config): express.Application {
         "server:console:read",
         "server:console:write",
         "server:power",
+        "server:files:read",
       ],
       bearer_methods_supported: ["header"],
       resource_documentation: "https://github.com/jackh54/pterodactyl-mcp",
@@ -68,6 +77,8 @@ export function createApp(config: Config): express.Application {
     next();
   });
 
+  app.use("/mcp", ipAllowlist);
+
   app.post("/mcp", async (req: Request, res: Response) => {
     try {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -83,7 +94,7 @@ export function createApp(config: Config): express.Application {
         }
 
         const auth = await authenticateRequest(config, token);
-        const clientIp = req.ip;
+        const clientIp = getClientIp(req);
 
         const server = createMcpServer({
           auth,
@@ -92,6 +103,7 @@ export function createApp(config: Config): express.Application {
           config,
           clientIp,
           consoleSessions,
+          confirmationStore,
         });
 
         const transport = new StreamableHTTPServerTransport({
@@ -146,7 +158,7 @@ export function createApp(config: Config): express.Application {
     }
   });
 
-  app.get("/mcp", async (req: Request, res: Response) => {
+  app.get("/mcp", ipAllowlist, async (req: Request, res: Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     if (!sessionId || !sessions.has(sessionId)) {
       res.status(400).send("Invalid or missing session ID");
@@ -157,7 +169,7 @@ export function createApp(config: Config): express.Application {
     await entry.transport.handleRequest(req, res);
   });
 
-  app.delete("/mcp", async (req: Request, res: Response) => {
+  app.delete("/mcp", ipAllowlist, async (req: Request, res: Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     if (!sessionId || !sessions.has(sessionId)) {
       res.status(400).send("Invalid or missing session ID");
@@ -197,5 +209,8 @@ export function startServer(config: Config): void {
     console.log(
       `Command policy: ${config.commandPolicyMode} (preset: ${config.commandPolicyPreset})`,
     );
+    if (config.allowedIps?.length) {
+      console.log(`IP allowlist: ${config.allowedIps.join(", ")}`);
+    }
   });
 }

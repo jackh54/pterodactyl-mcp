@@ -1,7 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { PterodactylApiError } from "../pterodactyl/client.js";
-import { sessionKey, type McpContext } from "./context.js";
+import type { McpContext } from "./context.js";
+import { sessionKey } from "./context.js";
+import { registerFileTools } from "./register-file-tools.js";
+import { registerPowerTools } from "./register-power-tools.js";
 import {
   auditDenied,
   auditError,
@@ -145,7 +148,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
       checkRateLimit(ctx, "send_console_command");
       const args = { server_id, command, wait_for_output };
 
-      const policy = ctx.commandPolicy.evaluate(command);
+      const policy = ctx.policyResolver.forServer(server_id).evaluate(command);
       if (!policy.allowed) {
         auditDenied(ctx, "send_console_command", args, policy.reason ?? "Command blocked", server_id);
         return errorResult(policy.reason ?? "Command blocked by policy");
@@ -198,4 +201,7 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
       }
     },
   );
+
+  registerPowerTools(server, ctx);
+  registerFileTools(server, ctx);
 }

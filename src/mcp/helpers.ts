@@ -32,13 +32,14 @@ export function checkRateLimit(ctx: McpContext, tool: string): void {
   }
 }
 
-export async function requireServerWithConsole(
+export async function requireServerWithPermission(
   ctx: McpContext,
   serverId: string,
+  permission: string,
   tool: string,
 ): Promise<ServerDetails> {
   const server = await ctx.auth.client.getServer(serverId);
-  if (!ctx.auth.client.hasPermission(server, "control.console")) {
+  if (!ctx.auth.client.hasPermission(server, permission)) {
     ctx.audit.log({
       userId: ctx.auth.account.id,
       userEmail: ctx.auth.account.email,
@@ -46,12 +47,20 @@ export async function requireServerWithConsole(
       serverId,
       arguments: { server_id: serverId },
       status: "denied",
-      message: "Missing control.console permission",
+      message: `Missing ${permission} permission`,
       clientIp: ctx.clientIp,
     });
-    throw new Error("You do not have permission to access this server's console.");
+    throw new Error(`You do not have permission (${permission}) on this server.`);
   }
   return server;
+}
+
+export async function requireServerWithConsole(
+  ctx: McpContext,
+  serverId: string,
+  tool: string,
+): Promise<ServerDetails> {
+  return requireServerWithPermission(ctx, serverId, "control.console", tool);
 }
 
 export function auditSuccess(

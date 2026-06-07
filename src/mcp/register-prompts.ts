@@ -113,4 +113,61 @@ export function registerPrompts(server: McpServer, ctx: McpContext): void {
       };
     },
   );
+
+  server.registerPrompt(
+    "safe_restart",
+    {
+      description:
+        "Guides a safe server restart: check status, warn players if possible, restart with confirmation.",
+      argsSchema: {
+        server_id: z.string().min(8).describe("Server short identifier or UUID"),
+        warning_message: z
+          .string()
+          .optional()
+          .describe("Optional in-game warning message before restart"),
+      },
+    },
+    async ({ server_id, warning_message }) => {
+      const server = await requireServerWithConsole(ctx, server_id, "prompt:safe_restart");
+      const resources = await ctx.auth.client.getServerResources(server_id);
+
+      const canPower = ctx.auth.client.hasPermission(server, "control.restart");
+      const canConsole = ctx.auth.client.hasPermission(server, "control.console");
+
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: [
+                `Perform a safe restart of Pterodactyl server "${server.name}" (${server_id}).`,
+                "",
+                "## Current state",
+                `- Power state: ${resources.currentState}`,
+                `- Can restart: ${canPower}`,
+                `- Can send console commands: ${canConsole}`,
+                "",
+                "## Procedure",
+                "1. Confirm with the user that a restart is intended.",
+                "2. If the server is running and console access is available:",
+                warning_message
+                  ? `   - Send warning: \`${warning_message}\``
+                  : "   - Send a warning message to players (e.g. `say Server restarting in 30 seconds!`)",
+                "   - Wait an appropriate interval before restarting.",
+                "3. Use `server_power` with signal `restart`:",
+                "   - First call WITHOUT confirmation_token to obtain a token.",
+                "   - Second call WITH the confirmation_token to execute.",
+                "4. After restart, use `get_server_resources` and `get_console_output` to verify the server came back healthy.",
+                "",
+                "## Constraints",
+                "- Do NOT skip user confirmation for the restart.",
+                "- Do NOT use `kill` unless `restart` fails and the user explicitly approves.",
+              ].join("\n"),
+            },
+          },
+        ],
+      };
+    },
+  );
 }

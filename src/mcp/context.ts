@@ -2,7 +2,8 @@ import type { AuthContext } from "../auth/middleware.js";
 import type { AuditLogger } from "../audit/logger.js";
 import type { Config } from "../config.js";
 import type { ConsoleSessionManager } from "../pterodactyl/console-session.js";
-import type { CommandPolicy } from "../policy/command-policy.js";
+import type { PolicyResolver } from "../policy/policy-resolver.js";
+import type { ConfirmationStore } from "../power/confirmation-store.js";
 import type { RateLimiter } from "../rate-limit.js";
 
 export interface McpContext {
@@ -10,7 +11,8 @@ export interface McpContext {
   audit: AuditLogger;
   rateLimiter: RateLimiter;
   consoleSessions: ConsoleSessionManager;
-  commandPolicy: CommandPolicy;
+  policyResolver: PolicyResolver;
+  confirmationStore: ConfirmationStore;
   config: Config;
   clientIp?: string;
 }

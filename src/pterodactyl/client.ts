@@ -53,6 +53,27 @@ export interface ServerResources {
   uptime: number;
 }
 
+export type PowerSignal = "start" | "stop" | "restart" | "kill";
+
+export interface FileEntry {
+  name: string;
+  mode: string;
+  size: number;
+  isFile: boolean;
+  isSymlink: boolean;
+  mime: string | null;
+  modifiedAt: string;
+}
+
+export interface ActivityEntry {
+  id: string;
+  event: string;
+  description: string;
+  ip: string | null;
+  timestamp: string;
+  properties: Record<string, unknown>;
+}
+
 interface PterodactylListResponse<T> {
   object: string;
   data: Array<{ object: string; attributes: T }>;
@@ -76,6 +97,28 @@ export class PterodactylClient {
       Accept: "Application/vnd.pterodactyl.v1+json",
       "Content-Type": "application/json",
     };
+  }
+
+  private async requestText(path: string): Promise<string> {
+    const response = await fetch(`${this.panelUrl}${path}`, {
+      method: "GET",
+      headers: this.headers(),
+    });
+
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const errorBody = (await response.json()) as {
+          errors?: Array<{ detail?: string }>;
+        };
+        detail = errorBody.errors?.[0]?.detail ?? detail;
+      } catch {
+        // ignore parse errors
+      }
+      throw new PterodactylApiError(detail, response.status);
+    }
+
+    return response.text();
   }
 
   private async request<T>(
@@ -244,6 +287,74 @@ export class PterodactylClient {
       token: data.data.token,
       socket: data.data.socket,
     };
+  }
+
+  async sendPowerAction(serverId: string, signal: PowerSignal): Promise<void> {
+    await this.request("POST", `/api/client/servers/${serverId}/power`, {
+      signal,
+    });
+  }
+
+  async listFiles(serverId: string, directory: string): Promise<FileEntry[]> {
+    const params = new URLSearchParams({ directory });
+    const data = await this.request<
+      PterodactylListResponse<{
+        name: string;
+        mode: string;
+        size: number;
+        is_file: boolean;
+        is_symlink: boolean;
+        mimetype: string | null;
+        modified_at: string;
+      }>
+    >("GET", `/api/client/servers/${serverId}/files/list?${params.toString()}`);
+
+    return data.data.map((item) => ({
+      name: item.attributes.name,
+      mode: item.attributes.mode,
+      size: item.attributes.size,
+      isFile: item.attributes.is_file,
+      isSymlink: item.attributes.is_symlink,
+      mime: item.attributes.mimetype,
+      modifiedAt: item.attributes.modified_at,
+    }));
+  }
+
+  async readFile(serverId: string, filePath: string): Promise<string> {
+    const params = new URLSearchParams({ file: filePath });
+    return this.requestText(
+      `/api/client/servers/${serverId}/files/contents?${params.toString()}`,
+    );
+  }
+
+  async getServerActivity(
+    serverId: string,
+    page = 1,
+    perPage = 25,
+  ): Promise<ActivityEntry[]> {
+    const params = new URLSearchParams({
+      page: String(page),
+      "per_page": String(Math.min(perPage, 100)),
+    });
+    const data = await this.request<
+      PterodactylListResponse<{
+        id: string;
+        event: string;
+        description: string;
+        ip: string | null;
+        timestamp: string;
+        properties: Record<string, unknown>;
+      }>
+    >("GET", `/api/client/servers/${serverId}/activity?${params.toString()}`);
+
+    return data.data.map((item) => ({
+      id: item.attributes.id,
+      event: item.attributes.event,
+      description: item.attributes.description,
+      ip: item.attributes.ip,
+      timestamp: item.attributes.timestamp,
+      properties: item.attributes.properties,
+    }));
   }
 
   hasPermission(server: ServerDetails, permission: string): boolean {
