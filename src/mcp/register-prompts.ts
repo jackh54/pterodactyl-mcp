@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { McpContext } from "./context.js";
 import { sessionKey } from "./context.js";
-import { formatPterodactylError, requireServerWithConsole } from "./helpers.js";
+import { formatPterodactylError, prepareConsoleAccess, requireServerWithConsole } from "./helpers.js";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -36,7 +36,7 @@ export function registerPrompts(server: McpServer, ctx: McpContext): void {
       let recentLogs: string[] = [];
       if (resources.currentState === "running" && !server.isSuspended) {
         try {
-          const credentials = await ctx.auth.client.getWebSocketCredentials(server_id);
+          const { credentials } = await prepareConsoleAccess(ctx, server_id, "prompt:diagnose_server");
           recentLogs = await ctx.consoleSessions.withSession(
             sessionKey(ctx, server_id),
             server_id,

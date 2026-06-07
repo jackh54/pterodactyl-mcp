@@ -1,4 +1,6 @@
 import type { ServerDetails } from "../pterodactyl/client.js";
+import type { WebSocketCredentials } from "../pterodactyl/console-session.js";
+import { normalizeWingsSocketUrl } from "../pterodactyl/wings-socket.js";
 import type { McpContext } from "./context.js";
 
 export function textResult(data: unknown) {
@@ -62,6 +64,33 @@ export async function requireServerWithConsole(
   tool: string,
 ): Promise<ServerDetails> {
   return requireServerWithPermission(ctx, serverId, "control.console", tool);
+}
+
+export async function prepareConsoleAccess(
+  ctx: McpContext,
+  serverId: string,
+  tool: string,
+): Promise<{ server: ServerDetails; credentials: WebSocketCredentials }> {
+  const server = await requireServerWithConsole(ctx, serverId, tool);
+  if (server.isSuspended || server.isInstalling) {
+    throw new Error("Server is suspended or still installing.");
+  }
+
+  const resources = await ctx.auth.client.getServerResources(serverId);
+  if (resources.currentState !== "running") {
+    throw new Error(
+      `Console unavailable: server is ${resources.currentState}. Start the server first.`,
+    );
+  }
+
+  const credentials = await ctx.auth.client.getWebSocketCredentials(serverId);
+  return {
+    server,
+    credentials: {
+      token: credentials.token,
+      socket: normalizeWingsSocketUrl(credentials.socket, ctx.config.wingsSocketHost),
+    },
+  };
 }
 
 export function auditSuccess(
