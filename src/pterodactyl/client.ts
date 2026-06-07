@@ -84,6 +84,32 @@ export interface BackupSummary {
   completedAt: string | null;
 }
 
+export interface NetworkAllocation {
+  id: number;
+  ip: string;
+  ipAlias: string | null;
+  port: number;
+  notes: string | null;
+  isDefault: boolean;
+}
+
+export interface SubuserSummary {
+  uuid: string;
+  email: string;
+  permissions: string[];
+  createdAt: string;
+}
+
+export interface ServerDatabase {
+  id: string;
+  host: { address: string; port: number };
+  name: string;
+  username: string;
+  connectionsFrom: string;
+  maxConnections: number;
+  password?: string;
+}
+
 interface PterodactylListResponse<T> {
   object: string;
   data: Array<{ object: string; attributes: T }>;
@@ -459,6 +485,444 @@ export class PterodactylClient {
       createdAt: data.attributes.created_at,
       completedAt: data.attributes.completed_at,
     };
+  }
+
+  async getFileDownloadUrl(serverId: string, filePath: string): Promise<string> {
+    const params = new URLSearchParams({ file: filePath });
+    const data = await this.request<PterodactylObjectResponse<{ url: string }>>(
+      "GET",
+      `/api/client/servers/${serverId}/files/download?${params.toString()}`,
+    );
+    return data.attributes.url;
+  }
+
+  async getFileUploadUrl(serverId: string): Promise<string> {
+    const data = await this.request<PterodactylObjectResponse<{ url: string }>>(
+      "GET",
+      `/api/client/servers/${serverId}/files/upload`,
+    );
+    return data.attributes.url;
+  }
+
+  async uploadFile(
+    serverId: string,
+    directory: string,
+    filename: string,
+    content: string | Uint8Array,
+  ): Promise<void> {
+    const uploadUrl = await this.getFileUploadUrl(serverId);
+    const bytes =
+      typeof content === "string" ? new TextEncoder().encode(content) : new Uint8Array(content);
+    const formData = new FormData();
+    formData.append("files", new Blob([bytes.buffer]), filename);
+    formData.append("directory", directory);
+
+    const response = await this.fetchWithTimeout(uploadUrl, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new PterodactylApiError(
+        `File upload failed: ${response.statusText}`,
+        response.status,
+      );
+    }
+  }
+
+  async downloadFileContent(
+    serverId: string,
+    filePath: string,
+    maxBytes: number,
+  ): Promise<{ content: string; byteLength: number; truncated: boolean; isBinary: boolean }> {
+    const url = await this.getFileDownloadUrl(serverId, filePath);
+    const response = await this.fetchWithTimeout(url, { method: "GET" });
+
+    if (!response.ok) {
+      throw new PterodactylApiError(
+        `File download failed: ${response.statusText}`,
+        response.status,
+      );
+    }
+
+    const buffer = await response.arrayBuffer();
+    const byteLength = buffer.byteLength;
+    const slice = byteLength > maxBytes ? buffer.slice(0, maxBytes) : buffer;
+    const bytes = new Uint8Array(slice);
+
+    const isBinary = bytes.some((b) => b === 0 || (b < 32 && b !== 9 && b !== 10 && b !== 13));
+    if (isBinary) {
+      const base64 = Buffer.from(bytes).toString("base64");
+      return {
+        content: base64,
+        byteLength,
+        truncated: byteLength > maxBytes,
+        isBinary: true,
+      };
+    }
+
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    return {
+      content: decoder.decode(bytes),
+      byteLength,
+      truncated: byteLength > maxBytes,
+      isBinary: false,
+    };
+  }
+
+  async createFolder(serverId: string, root: string, name: string): Promise<void> {
+    await this.request("POST", `/api/client/servers/${serverId}/files/create-folder`, {
+      root,
+      name,
+    });
+  }
+
+  async deleteFiles(serverId: string, root: string, files: string[]): Promise<void> {
+    await this.request("POST", `/api/client/servers/${serverId}/files/delete`, {
+      root,
+      files,
+    });
+  }
+
+  async renameFiles(
+    serverId: string,
+    root: string,
+    operations: Array<{ from: string; to: string }>,
+  ): Promise<void> {
+    await this.request("PUT", `/api/client/servers/${serverId}/files/rename`, {
+      root,
+      files: operations,
+    });
+  }
+
+  async pullRemoteFile(
+    serverId: string,
+    options: {
+      url: string;
+      directory: string;
+      filename?: string;
+      useHeader?: boolean;
+      foreground?: boolean;
+    },
+  ): Promise<void> {
+    await this.request("POST", `/api/client/servers/${serverId}/files/pull`, {
+      url: options.url,
+      directory: options.directory,
+      filename: options.filename,
+      use_header: options.useHeader ?? false,
+      foreground: options.foreground ?? false,
+    });
+  }
+
+  async restoreBackup(
+    serverId: string,
+    backupUuid: string,
+    truncate = false,
+  ): Promise<void> {
+    await this.request(
+      "POST",
+      `/api/client/servers/${serverId}/backups/${backupUuid}/restore`,
+      { truncate },
+    );
+  }
+
+  async deleteBackup(serverId: string, backupUuid: string): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/client/servers/${serverId}/backups/${backupUuid}`,
+    );
+  }
+
+  async getBackupDownloadUrl(serverId: string, backupUuid: string): Promise<string> {
+    const data = await this.request<PterodactylObjectResponse<{ url: string }>>(
+      "GET",
+      `/api/client/servers/${serverId}/backups/${backupUuid}/download`,
+    );
+    return data.attributes.url;
+  }
+
+  async listAllocations(serverId: string): Promise<NetworkAllocation[]> {
+    const data = await this.request<
+      PterodactylListResponse<{
+        id: number;
+        ip: string;
+        ip_alias: string | null;
+        port: number;
+        notes: string | null;
+        is_default: boolean;
+      }>
+    >("GET", `/api/client/servers/${serverId}/network/allocations`);
+
+    return data.data.map((item) => ({
+      id: item.attributes.id,
+      ip: item.attributes.ip,
+      ipAlias: item.attributes.ip_alias,
+      port: item.attributes.port,
+      notes: item.attributes.notes,
+      isDefault: item.attributes.is_default,
+    }));
+  }
+
+  async createAllocation(serverId: string): Promise<NetworkAllocation> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        id: number;
+        ip: string;
+        ip_alias: string | null;
+        port: number;
+        notes: string | null;
+        is_default: boolean;
+      }>
+    >("POST", `/api/client/servers/${serverId}/network/allocations`);
+
+    return {
+      id: data.attributes.id,
+      ip: data.attributes.ip,
+      ipAlias: data.attributes.ip_alias,
+      port: data.attributes.port,
+      notes: data.attributes.notes,
+      isDefault: data.attributes.is_default,
+    };
+  }
+
+  async updateAllocationNotes(
+    serverId: string,
+    allocationId: number,
+    notes: string,
+  ): Promise<NetworkAllocation> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        id: number;
+        ip: string;
+        ip_alias: string | null;
+        port: number;
+        notes: string | null;
+        is_default: boolean;
+      }>
+    >(
+      "POST",
+      `/api/client/servers/${serverId}/network/allocations/${allocationId}`,
+      { notes },
+    );
+
+    return {
+      id: data.attributes.id,
+      ip: data.attributes.ip,
+      ipAlias: data.attributes.ip_alias,
+      port: data.attributes.port,
+      notes: data.attributes.notes,
+      isDefault: data.attributes.is_default,
+    };
+  }
+
+  async setPrimaryAllocation(
+    serverId: string,
+    allocationId: number,
+  ): Promise<NetworkAllocation> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        id: number;
+        ip: string;
+        ip_alias: string | null;
+        port: number;
+        notes: string | null;
+        is_default: boolean;
+      }>
+    >(
+      "POST",
+      `/api/client/servers/${serverId}/network/allocations/${allocationId}/primary`,
+    );
+
+    return {
+      id: data.attributes.id,
+      ip: data.attributes.ip,
+      ipAlias: data.attributes.ip_alias,
+      port: data.attributes.port,
+      notes: data.attributes.notes,
+      isDefault: data.attributes.is_default,
+    };
+  }
+
+  async deleteAllocation(serverId: string, allocationId: number): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/client/servers/${serverId}/network/allocations/${allocationId}`,
+    );
+  }
+
+  async listSubusers(serverId: string): Promise<SubuserSummary[]> {
+    const data = await this.request<
+      PterodactylListResponse<{
+        uuid: string;
+        email: string;
+        permissions: string[];
+        created_at: string;
+      }>
+    >("GET", `/api/client/servers/${serverId}/users`);
+
+    return data.data.map((item) => ({
+      uuid: item.attributes.uuid,
+      email: item.attributes.email,
+      permissions: item.attributes.permissions,
+      createdAt: item.attributes.created_at,
+    }));
+  }
+
+  async getSubuser(serverId: string, userUuid: string): Promise<SubuserSummary> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        uuid: string;
+        email: string;
+        permissions: string[];
+        created_at: string;
+      }>
+    >("GET", `/api/client/servers/${serverId}/users/${userUuid}`);
+
+    return {
+      uuid: data.attributes.uuid,
+      email: data.attributes.email,
+      permissions: data.attributes.permissions,
+      createdAt: data.attributes.created_at,
+    };
+  }
+
+  async createSubuser(
+    serverId: string,
+    email: string,
+    permissions: string[],
+  ): Promise<SubuserSummary> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        uuid: string;
+        email: string;
+        permissions: string[];
+        created_at: string;
+      }>
+    >("POST", `/api/client/servers/${serverId}/users`, { email, permissions });
+
+    return {
+      uuid: data.attributes.uuid,
+      email: data.attributes.email,
+      permissions: data.attributes.permissions,
+      createdAt: data.attributes.created_at,
+    };
+  }
+
+  async updateSubuser(
+    serverId: string,
+    userUuid: string,
+    permissions: string[],
+  ): Promise<SubuserSummary> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        uuid: string;
+        email: string;
+        permissions: string[];
+        created_at: string;
+      }>
+    >("POST", `/api/client/servers/${serverId}/users/${userUuid}`, { permissions });
+
+    return {
+      uuid: data.attributes.uuid,
+      email: data.attributes.email,
+      permissions: data.attributes.permissions,
+      createdAt: data.attributes.created_at,
+    };
+  }
+
+  async deleteSubuser(serverId: string, userUuid: string): Promise<void> {
+    await this.request("DELETE", `/api/client/servers/${serverId}/users/${userUuid}`);
+  }
+
+  async listDatabases(serverId: string): Promise<ServerDatabase[]> {
+    const data = await this.request<
+      PterodactylListResponse<{
+        id: string;
+        host: { address: string; port: number };
+        name: string;
+        username: string;
+        connections_from: string;
+        max_connections: number;
+      }>
+    >("GET", `/api/client/servers/${serverId}/databases`);
+
+    return data.data.map((item) => ({
+      id: item.attributes.id,
+      host: item.attributes.host,
+      name: item.attributes.name,
+      username: item.attributes.username,
+      connectionsFrom: item.attributes.connections_from,
+      maxConnections: item.attributes.max_connections,
+    }));
+  }
+
+  async createDatabase(
+    serverId: string,
+    database: string,
+    remote = "%",
+  ): Promise<ServerDatabase> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        id: string;
+        host: { address: string; port: number };
+        name: string;
+        username: string;
+        connections_from: string;
+        max_connections: number;
+        relationships?: {
+          password?: { attributes?: { password?: string } };
+        };
+      }>
+    >("POST", `/api/client/servers/${serverId}/databases`, {
+      database,
+      remote,
+    });
+
+    return {
+      id: data.attributes.id,
+      host: data.attributes.host,
+      name: data.attributes.name,
+      username: data.attributes.username,
+      connectionsFrom: data.attributes.connections_from,
+      maxConnections: data.attributes.max_connections,
+      password: data.attributes.relationships?.password?.attributes?.password,
+    };
+  }
+
+  async rotateDatabasePassword(serverId: string, databaseId: string): Promise<ServerDatabase> {
+    const data = await this.request<
+      PterodactylObjectResponse<{
+        id: string;
+        host: { address: string; port: number };
+        name: string;
+        username: string;
+        connections_from: string;
+        max_connections: number;
+        relationships?: {
+          password?: { attributes?: { password?: string } };
+        };
+      }>
+    >(
+      "POST",
+      `/api/client/servers/${serverId}/databases/${databaseId}/rotate-password`,
+    );
+
+    return {
+      id: data.attributes.id,
+      host: data.attributes.host,
+      name: data.attributes.name,
+      username: data.attributes.username,
+      connectionsFrom: data.attributes.connections_from,
+      maxConnections: data.attributes.max_connections,
+      password: data.attributes.relationships?.password?.attributes?.password,
+    };
+  }
+
+  async deleteDatabase(serverId: string, databaseId: string): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/client/servers/${serverId}/databases/${databaseId}`,
+    );
   }
 
   async getServerActivity(

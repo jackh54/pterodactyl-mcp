@@ -55,7 +55,17 @@ const configSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  enableFileMutations: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  enableApplicationApi: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  applicationApiKey: z.string().optional(),
   backupRateLimitMs: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
+  bulkMaxServers: z.coerce.number().int().min(1).max(50).default(10),
   powerConfirmationTtlMs: z.coerce.number().int().min(30_000).max(900_000).default(300_000),
   powerAutoConfirm: z
     .enum(["true", "false"])
@@ -79,6 +89,7 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema> & {
   tokenMap: TokenMap;
   wingsWebSocketOrigin: string;
+  applicationApiKey?: string;
 };
 
 function validateJsonFile(path: string, label: string): void {
@@ -125,7 +136,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     fileMaxWriteBytes: env.FILE_MAX_WRITE_BYTES,
     enableFileWrite: env.ENABLE_FILE_WRITE,
     enableBackups: env.ENABLE_BACKUPS,
+    enableFileMutations: env.ENABLE_FILE_MUTATIONS,
+    enableApplicationApi: env.ENABLE_APPLICATION_API,
+    applicationApiKey: env.PTERODACTYL_APPLICATION_API_KEY,
     backupRateLimitMs: env.BACKUP_RATE_LIMIT_MS,
+    bulkMaxServers: env.BULK_MAX_SERVERS,
     powerConfirmationTtlMs: env.POWER_CONFIRMATION_TTL_MS,
     powerAutoConfirm: env.POWER_AUTO_CONFIRM,
     metricsEnabled: env.METRICS_ENABLED,
@@ -145,6 +160,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   const tokenMap = loadTokenMap(config.mcpTokenMapPath);
+
+  if (config.enableApplicationApi && !config.applicationApiKey) {
+    throw new Error(
+      "PTERODACTYL_APPLICATION_API_KEY is required when ENABLE_APPLICATION_API=true",
+    );
+  }
 
   return {
     ...config,

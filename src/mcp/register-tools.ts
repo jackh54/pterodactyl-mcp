@@ -2,9 +2,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { McpContext } from "./context.js";
 import { sessionKey } from "./context.js";
-import { registerFileTools } from "./register-file-tools.js";
+import { registerAdminTools } from "./register-admin-tools.js";
+import { registerBulkTools } from "./register-bulk-tools.js";
+import { registerDatabaseTools } from "./register-database-tools.js";
 import { registerExtendedTools } from "./register-extended-tools.js";
+import { registerFileTools } from "./register-file-tools.js";
+import { registerNetworkTools } from "./register-network-tools.js";
 import { registerPowerTools } from "./register-power-tools.js";
+import { registerSubuserTools } from "./register-subuser-tools.js";
 import {
   auditDenied,
   auditError,
@@ -98,16 +103,37 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
         .max(500)
         .optional()
         .describe("Maximum number of log lines to return (default from server config)"),
+      search: z
+        .string()
+        .optional()
+        .describe("Filter lines containing this text (grep-style)"),
+      regex: z.boolean().optional().describe("Treat search as a regular expression"),
+      case_insensitive: z.boolean().optional().describe("Case-insensitive search"),
+      invert: z.boolean().optional().describe("Return lines that do NOT match the search"),
+      max_matches: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Maximum matching lines to return when search is set"),
     },
-    async ({ server_id, max_lines }) => {
+    async ({ server_id, max_lines, search, regex, case_insensitive, invert, max_matches }) => {
       checkRateLimit(ctx, "get_console_output");
-      const args = { server_id, max_lines };
+      const args = { server_id, max_lines, search, regex, case_insensitive, invert, max_matches };
       try {
         const result = await fetchConsoleOutput(
           ctx,
           server_id,
           "get_console_output",
           max_lines ?? ctx.config.consoleMaxLines,
+          {
+            query: search,
+            regex,
+            caseInsensitive: case_insensitive,
+            invert,
+            maxMatches: max_matches,
+          },
         );
 
         auditSuccess(ctx, "get_console_output", args, server_id);
@@ -117,6 +143,13 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
           filePath: result.filePath,
           lineCount: result.lines.length,
           lines: result.lines,
+          search: result.search
+            ? {
+                totalScanned: result.search.totalScanned,
+                totalMatches: result.search.totalMatches,
+                matchedLineNumbers: result.search.matchedLineNumbers,
+              }
+            : undefined,
         });
       } catch (error) {
         const message = formatPterodactylError(error);
@@ -205,4 +238,9 @@ export function registerTools(server: McpServer, ctx: McpContext): void {
   registerPowerTools(server, ctx);
   registerFileTools(server, ctx);
   registerExtendedTools(server, ctx);
+  registerNetworkTools(server, ctx);
+  registerSubuserTools(server, ctx);
+  registerDatabaseTools(server, ctx);
+  registerBulkTools(server, ctx);
+  registerAdminTools(server, ctx);
 }

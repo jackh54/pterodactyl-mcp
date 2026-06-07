@@ -3,7 +3,9 @@ import {
   fetchConsoleFromFiles,
   fetchConsoleFromWebSocket,
   logConsoleDebug,
+  searchConsoleLines,
   type ConsoleOutputResult,
+  type ConsoleSearchOptions,
 } from "../pterodactyl/console-output.js";
 import type { WebSocketCredentials } from "../pterodactyl/console-session.js";
 import { normalizeWingsSocketUrl } from "../pterodactyl/wings-socket.js";
@@ -105,7 +107,8 @@ export async function fetchConsoleOutput(
   serverId: string,
   tool: string,
   maxLines: number,
-): Promise<ConsoleOutputResult> {
+  search?: ConsoleSearchOptions,
+): Promise<ConsoleOutputResult & { search?: ReturnType<typeof searchConsoleLines> }> {
   const transport = ctx.config.consoleTransport;
   logConsoleDebug(ctx.config.consoleDebug, "fetchConsoleOutput", { serverId, transport, maxLines });
 
@@ -128,7 +131,7 @@ export async function fetchConsoleOutput(
           filePath: fileResult.filePath,
           lineCount: fileResult.lines.length,
         });
-        return fileResult;
+        return applyConsoleSearch(fileResult, search);
       }
       logConsoleDebug(ctx.config.consoleDebug, "no log file found on common paths");
     } else if (transport === "file") {
@@ -162,7 +165,22 @@ export async function fetchConsoleOutput(
   logConsoleDebug(ctx.config.consoleDebug, "websocket console read finished", {
     lineCount: result.lines.length,
   });
-  return result;
+  return applyConsoleSearch(result, search);
+}
+
+function applyConsoleSearch(
+  result: ConsoleOutputResult,
+  search?: ConsoleSearchOptions,
+): ConsoleOutputResult & { search?: ReturnType<typeof searchConsoleLines> } {
+  if (!search?.query?.trim()) {
+    return result;
+  }
+  const searchResult = searchConsoleLines(result.lines, search);
+  return {
+    ...result,
+    lines: searchResult.lines,
+    search: searchResult,
+  };
 }
 
 export function auditSuccess(

@@ -13,6 +13,7 @@ import type { AuditLogger } from "../audit/logger.js";
 import type { RateLimiter } from "../rate-limit.js";
 import { registerPrompts } from "./register-prompts.js";
 import { registerResources } from "./register-resources.js";
+import { PterodactylApplicationClient } from "../pterodactyl/application-client.js";
 import { registerTools } from "./register-tools.js";
 
 export interface CreateMcpServerOptions {
@@ -36,11 +37,21 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
     options.config.policyAutoDetectEgg,
   );
 
+  const applicationClient =
+    options.config.enableApplicationApi && options.config.applicationApiKey
+      ? new PterodactylApplicationClient(
+          options.config.panelUrl,
+          options.config.applicationApiKey,
+          options.config.panelRequestTimeoutMs,
+        )
+      : undefined;
+
   const ctx = {
     auth: options.auth,
     audit: options.audit,
     rateLimiter: options.rateLimiter,
     config: options.config,
+    applicationClient,
     clientIp: options.clientIp,
     consoleSessions: options.consoleSessions,
     confirmationStore: options.confirmationStore,
@@ -52,7 +63,7 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
 
   const server = new McpServer({
     name: "pterodactyl-mcp",
-    version: "0.4.0",
+    version: "0.5.0",
   });
 
   registerTools(server, ctx);
