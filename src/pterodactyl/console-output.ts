@@ -27,6 +27,74 @@ export function tailLines(content: string, maxLines: number): string[] {
     .slice(-maxLines);
 }
 
+export interface ConsoleSearchOptions {
+  query?: string;
+  regex?: boolean;
+  caseInsensitive?: boolean;
+  invert?: boolean;
+  maxMatches?: number;
+}
+
+export interface ConsoleSearchResult {
+  lines: string[];
+  totalScanned: number;
+  totalMatches: number;
+  matchedLineNumbers: number[];
+}
+
+export function searchConsoleLines(
+  lines: string[],
+  options: ConsoleSearchOptions = {},
+): ConsoleSearchResult {
+  const { query, regex = false, caseInsensitive = false, invert = false, maxMatches } = options;
+
+  if (!query?.trim()) {
+    return {
+      lines,
+      totalScanned: lines.length,
+      totalMatches: lines.length,
+      matchedLineNumbers: lines.map((_, index) => index + 1),
+    };
+  }
+
+  let matcher: (line: string) => boolean;
+  if (regex) {
+    const flags = caseInsensitive ? "i" : "";
+    const pattern = new RegExp(query, flags);
+    matcher = (line) => pattern.test(line);
+  } else {
+    const needle = caseInsensitive ? query.toLowerCase() : query;
+    matcher = (line) => {
+      const haystack = caseInsensitive ? line.toLowerCase() : line;
+      return haystack.includes(needle);
+    };
+  }
+
+  const matchedLineNumbers: number[] = [];
+  const matchedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const matches = matcher(line);
+    const include = invert ? !matches : matches;
+    if (!include) {
+      continue;
+    }
+    matchedLineNumbers.push(index + 1);
+    matchedLines.push(line);
+    if (maxMatches !== undefined && matchedLines.length >= maxMatches) {
+      break;
+    }
+  }
+
+  return {
+    lines: matchedLines,
+    totalScanned: lines.length,
+    totalMatches: matchedLines.length,
+    matchedLineNumbers,
+  };
+}
+
 export async function fetchConsoleFromFiles(
   client: PterodactylClient,
   serverId: string,

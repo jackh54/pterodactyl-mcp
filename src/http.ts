@@ -57,7 +57,7 @@ export function createApp(config: Config, metricsRegistry = new MetricsRegistry(
     res.json({
       status: "ok",
       mcpEnabled: config.mcpEnabled,
-      version: "0.4.0",
+      version: "0.5.0",
       commandPolicyMode: config.commandPolicyMode,
       commandPolicyPreset: config.commandPolicyPreset,
       policyAutoDetectEgg: config.policyAutoDetectEgg,
@@ -76,7 +76,7 @@ export function createApp(config: Config, metricsRegistry = new MetricsRegistry(
       metricsRegistry.setGauge(
         "pterodactyl_mcp_info",
         1,
-        { version: "0.4.0" },
+        { version: "0.5.0" },
       );
       res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
       res.send(metricsRegistry.toPrometheus());

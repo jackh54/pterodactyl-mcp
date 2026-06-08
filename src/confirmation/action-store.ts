@@ -1,6 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 
-export type ActionKind = "write_file" | "create_backup";
+export type ActionKind =
+  | "write_file"
+  | "create_backup"
+  | "restore_backup"
+  | "delete_backup"
+  | "delete_files"
+  | "delete_database"
+  | "delete_subuser"
+  | "delete_allocation"
+  | "create_server"
+  | "delete_server";
 
 export interface PendingAction {
   token: string;

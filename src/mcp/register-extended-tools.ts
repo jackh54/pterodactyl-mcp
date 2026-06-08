@@ -229,5 +229,190 @@ export function registerExtendedTools(server: McpServer, ctx: McpContext): void 
         }
       },
     );
+
+    server.tool(
+      "restore_server_backup",
+      "Restore a server from a backup. Server must be stopped. Requires confirmation and backup.restore permission.",
+      {
+        server_id: z.string().min(8).describe("Server short identifier or UUID"),
+        backup_uuid: z.string().min(8).describe("Backup UUID to restore"),
+        truncate: z
+          .boolean()
+          .optional()
+          .describe("Delete existing files before restore (default false)"),
+        confirmation_token: z
+          .string()
+          .optional()
+          .describe("Token from a prior call that returned requires_confirmation"),
+      },
+      async ({ server_id, backup_uuid, truncate, confirmation_token }) => {
+        checkRateLimit(ctx, "restore_server_backup");
+        const args = {
+          server_id,
+          backup_uuid,
+          truncate,
+          confirmation_token: confirmation_token ? "[redacted]" : undefined,
+        };
+        const fingerprint = ActionConfirmationStore.fingerprint(
+          "restore_backup",
+          server_id,
+          backup_uuid,
+        );
+
+        if (!confirmation_token) {
+          try {
+            await requireServerWithPermission(ctx, server_id, "backup.restore", "restore_server_backup");
+          } catch (error) {
+            const message = formatPterodactylError(error);
+            auditDenied(ctx, "restore_server_backup", args, message, server_id);
+            return errorResult(message);
+          }
+          const pending = ctx.actionConfirmationStore.create(
+            ctx.auth.account.id,
+            server_id,
+            "restore_backup",
+            fingerprint,
+          );
+          auditSuccess(ctx, "restore_server_backup", { ...args, stage: "confirmation_requested" }, server_id);
+          return textResult({
+            requires_confirmation: true,
+            confirmation_token: pending.token,
+            expires_at: new Date(pending.expiresAt).toISOString(),
+            server_id,
+            backup_uuid,
+            message: "Backup restore requires confirmation. Call again with confirmation_token.",
+          });
+        }
+
+        const confirmed = ctx.actionConfirmationStore.consume(
+          confirmation_token,
+          ctx.auth.account.id,
+          server_id,
+          "restore_backup",
+          fingerprint,
+        );
+        if (!confirmed.ok) {
+          auditDenied(ctx, "restore_server_backup", args, confirmed.reason, server_id);
+          return errorResult(confirmed.reason);
+        }
+
+        try {
+          await requireServerWithPermission(ctx, server_id, "backup.restore", "restore_server_backup");
+          await ctx.auth.client.restoreBackup(server_id, backup_uuid, truncate ?? false);
+          auditSuccess(ctx, "restore_server_backup", args, server_id);
+          return textResult({
+            ok: true,
+            serverId: server_id,
+            backupUuid: backup_uuid,
+            message: "Backup restore started. Server must be stopped. Process cannot be cancelled.",
+          });
+        } catch (error) {
+          const message = formatPterodactylError(error);
+          auditError(ctx, "restore_server_backup", args, message, server_id);
+          return errorResult(message);
+        }
+      },
+    );
+
+    server.tool(
+      "delete_server_backup",
+      "Delete a server backup. Requires confirmation and backup.delete permission.",
+      {
+        server_id: z.string().min(8).describe("Server short identifier or UUID"),
+        backup_uuid: z.string().min(8).describe("Backup UUID to delete"),
+        confirmation_token: z
+          .string()
+          .optional()
+          .describe("Token from a prior call that returned requires_confirmation"),
+      },
+      async ({ server_id, backup_uuid, confirmation_token }) => {
+        checkRateLimit(ctx, "delete_server_backup");
+        const args = {
+          server_id,
+          backup_uuid,
+          confirmation_token: confirmation_token ? "[redacted]" : undefined,
+        };
+        const fingerprint = ActionConfirmationStore.fingerprint(
+          "delete_backup",
+          server_id,
+          backup_uuid,
+        );
+
+        if (!confirmation_token) {
+          try {
+            await requireServerWithPermission(ctx, server_id, "backup.delete", "delete_server_backup");
+          } catch (error) {
+            const message = formatPterodactylError(error);
+            auditDenied(ctx, "delete_server_backup", args, message, server_id);
+            return errorResult(message);
+          }
+          const pending = ctx.actionConfirmationStore.create(
+            ctx.auth.account.id,
+            server_id,
+            "delete_backup",
+            fingerprint,
+          );
+          auditSuccess(ctx, "delete_server_backup", { ...args, stage: "confirmation_requested" }, server_id);
+          return textResult({
+            requires_confirmation: true,
+            confirmation_token: pending.token,
+            expires_at: new Date(pending.expiresAt).toISOString(),
+            server_id,
+            backup_uuid,
+            message: "Backup deletion requires confirmation. Call again with confirmation_token.",
+          });
+        }
+
+        const confirmed = ctx.actionConfirmationStore.consume(
+          confirmation_token,
+          ctx.auth.account.id,
+          server_id,
+          "delete_backup",
+          fingerprint,
+        );
+        if (!confirmed.ok) {
+          auditDenied(ctx, "delete_server_backup", args, confirmed.reason, server_id);
+          return errorResult(confirmed.reason);
+        }
+
+        try {
+          await requireServerWithPermission(ctx, server_id, "backup.delete", "delete_server_backup");
+          await ctx.auth.client.deleteBackup(server_id, backup_uuid);
+          auditSuccess(ctx, "delete_server_backup", args, server_id);
+          return textResult({ ok: true, serverId: server_id, backupUuid: backup_uuid });
+        } catch (error) {
+          const message = formatPterodactylError(error);
+          auditError(ctx, "delete_server_backup", args, message, server_id);
+          return errorResult(message);
+        }
+      },
+    );
   }
+
+  server.tool(
+    "get_backup_download_url",
+    "Get a signed download URL for a backup archive. Requires backup.download permission.",
+    {
+      server_id: z.string().min(8).describe("Server short identifier or UUID"),
+      backup_uuid: z.string().min(8).describe("Backup UUID"),
+    },
+    async ({ server_id, backup_uuid }) => {
+      checkRateLimit(ctx, "get_backup_download_url");
+      const args = { server_id, backup_uuid };
+      try {
+        await requireServerWithPermission(ctx, server_id, "backup.download", "get_backup_download_url");
+        const url = await ctx.auth.client.getBackupDownloadUrl(server_id, backup_uuid);
+        auditSuccess(ctx, "get_backup_download_url", args, server_id);
+        return textResult({
+          serverId: server_id,
+          backupUuid: backup_uuid,
+          downloadUrl: url,
+        });
+      } catch (error) {
+        const message = formatPterodactylError(error);
+        auditError(ctx, "get_backup_download_url", args, message, server_id);
+        return errorResult(message);
+      }
+    },
+  );
 }

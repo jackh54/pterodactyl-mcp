@@ -7,6 +7,7 @@ import type { PolicyResolver } from "../policy/policy-resolver.js";
 import type { ConfirmationStore } from "../power/confirmation-store.js";
 import type { RateLimiter } from "../rate-limit.js";
 import type { MetricsRegistry } from "../metrics/registry.js";
+import type { PterodactylApplicationClient } from "../pterodactyl/application-client.js";
 
 export interface McpContext {
   auth: AuthContext;
@@ -19,6 +20,7 @@ export interface McpContext {
   backupRateLimiter: BackupRateLimiter;
   metrics: MetricsRegistry;
   config: Config;
+  applicationClient?: PterodactylApplicationClient;
   clientIp?: string;
 }
 
